@@ -46,6 +46,7 @@ class EspnGame:
     spread_home: float | None = None
     total: float | None = None
     provider: str = ""
+    detail: str = ""  # e.g. "Top 7th", "Final", "9/7 - 7:10 PM EDT"
 
 
 class Espn:
@@ -153,4 +154,5 @@ class Espn:
             home=team(home), away=team(away), state=st.get("state", ""), completed=completed,
             home_score=score(home), away_score=score(away), winner=winner, odds=odds,
             spread_home=spread_home, total=total, provider=provider,
+            detail=st.get("shortDetail") or st.get("detail") or "",
         )

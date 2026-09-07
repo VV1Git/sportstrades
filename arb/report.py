@@ -58,14 +58,49 @@ def opps_table(opps: list[Opportunity], title: str = "Arbitrage opportunities (n
 
 
 def discrepancy_table(rows: list[Discrepancy], limit: int = 25, min_abs_edge: float = 0.0) -> Table:
-    t = Table(title="Vegas (de-vigged) vs prediction market", expand=False)
-    for c in ("League", "Game", "Team", "Book", "ML", "Fair p", "Venue", "PM bid", "PM ask", "Edge buy", "Edge sell"):
+    t = Table(title="Vegas (de-vigged) vs prediction market   [fair = proportional de-vig, fair^ = power de-vig]", expand=False)
+    for c in ("League", "Game", "Team", "Book", "ML", "Fair p", "Fair^ p", "Venue", "PM bid", "PM ask", "Edge buy", "Edge sell"):
         t.add_column(c)
     rows = [r for r in rows if max(abs(r.edge_buy or 0), abs(r.edge_sell or 0)) >= min_abs_edge]
     rows.sort(key=lambda r: -max(r.edge_buy or -9, r.edge_sell or -9))
     for r in rows[:limit]:
-        t.add_row(r.league.upper(), r.game, r.team, r.bookmaker, f"{r.american:+d}", f"{r.fair:.3f}", r.venue,
+        t.add_row(r.league.upper(), r.game, r.team, r.bookmaker, f"{r.american:+d}", f"{r.fair:.3f}",
+                  "-" if r.fair_power is None else f"{r.fair_power:.3f}", r.venue,
                   price(r.pm_bid), price(r.pm_ask), pct(r.edge_buy), pct(r.edge_sell))
+    return t
+
+
+def league_gap_table(games: list[Game], title: str = "Cross-venue tightness by league (top of book)") -> Table:
+    """How far apart Kalshi and Polymarket sit per league, and whether the best
+    prices ever cross."""
+    import statistics
+    t = Table(title=title, expand=False)
+    for c in ("League", "Games both venues", "Legs", "|mid diff| mean", "|mid diff| max", "K spread", "P spread",
+              "gross gap>0", "best gross gap", "K ask depth", "P ask depth"):
+        t.add_column(c)
+    by: dict[str, list] = {}
+    for g in games:
+        for team in set(g.kalshi) & set(g.polymarket):
+            by.setdefault(g.league, []).append((g, g.kalshi[team], g.polymarket[team]))
+    for lg, legs in sorted(by.items(), key=lambda x: -len(x[1])):
+        md = [abs(k.mid - p.mid) for _, k, p in legs if k.mid is not None and p.mid is not None]
+        ks = [k.yes_ask - k.yes_bid for _, k, p in legs if k.yes_ask is not None and k.yes_bid is not None]
+        ps = [p.yes_ask - p.yes_bid for _, k, p in legs if p.yes_ask is not None and p.yes_bid is not None]
+        gaps = []
+        for _, k, p in legs:
+            g1 = p.yes_bid - k.yes_ask if p.yes_bid is not None and k.yes_ask is not None else None
+            g2 = k.yes_bid - p.yes_ask if k.yes_bid is not None and p.yes_ask is not None else None
+            gg = [x for x in (g1, g2) if x is not None]
+            if gg:
+                gaps.append(max(gg))
+        kd = [k.yes_ask_size for _, k, p in legs if k.yes_ask_size]
+        pd = [p.yes_ask_size for _, k, p in legs if p.yes_ask_size]
+        t.add_row(lg.upper(), str(len({g.key for g, _, _ in legs})), str(len(legs)),
+                  f"{statistics.fmean(md):.4f}" if md else "-", f"{max(md):.3f}" if md else "-",
+                  f"{statistics.fmean(ks):.3f}" if ks else "-", f"{statistics.fmean(ps):.3f}" if ps else "-",
+                  f"{sum(1 for x in gaps if x > 0)}/{len(gaps)}" if gaps else "-",
+                  f"{max(gaps):+.3f}" if gaps else "-",
+                  f"{statistics.median(kd):.0f}" if kd else "-", f"{statistics.median(pd):.0f}" if pd else "-")
     return t
 
 

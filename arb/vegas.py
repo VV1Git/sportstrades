@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from .arbitrage import Side, opportunity
 from .config import LEAGUES, Settings
 from .models import BookOdds, Game, Leg, Opportunity, Outcome
-from .odds import devig_multiplicative
+from .odds import devig_multiplicative, devig_power
 
 
 @dataclass(slots=True)
@@ -28,7 +28,8 @@ class Discrepancy:
     bookmaker: str
     american: int
     implied: float
-    fair: float
+    fair: float  # proportional (multiplicative) de-vig
+    fair_power: float | None  # power-method de-vig (keeps the favourite-longshot shape)
     pm_bid: float | None
     pm_ask: float | None
     edge_buy: float | None  # fair - ask   (>0: PM is cheap vs Vegas -> buy YES)
@@ -47,7 +48,7 @@ def best_quotes(game: Game) -> dict[str, BookOdds]:
     return best
 
 
-def fair_probs(game: Game) -> tuple[dict[str, float], dict[str, BookOdds]]:
+def fair_probs(game: Game) -> tuple[dict[str, float], dict[str, BookOdds], dict[str, float]]:
     """Average de-vigged probability per team across bookmakers that quote
     both sides. Returns ({team: fair}, {team: representative quote})."""
     by_book: dict[str, dict[str, BookOdds]] = {}
@@ -56,6 +57,7 @@ def fair_probs(game: Game) -> tuple[dict[str, float], dict[str, BookOdds]]:
             by_book.setdefault(q.bookmaker, {})[team] = q
     teams = [game.home, game.away]
     acc: dict[str, list[float]] = {t: [] for t in teams}
+    acc_pow: dict[str, list[float]] = {t: [] for t in teams}
     rep: dict[str, BookOdds] = {}
     for book, qs in by_book.items():
         if not all(t in qs for t in teams):
@@ -67,10 +69,13 @@ def fair_probs(game: Game) -> tuple[dict[str, float], dict[str, BookOdds]]:
             # without draw odds we can only de-vig the two sides we have; skip
             continue
         fair = devig_multiplicative(implied)
-        for t, f in zip(teams, fair):
+        fpow = devig_power(implied)
+        for t, f, fp in zip(teams, fair, fpow):
             acc[t].append(f)
+            acc_pow[t].append(fp)
             rep.setdefault(t, qs[t])
-    return {t: sum(v) / len(v) for t, v in acc.items() if v}, rep
+    fair_pow = {t: sum(v) / len(v) for t, v in acc_pow.items() if v}
+    return {t: sum(v) / len(v) for t, v in acc.items() if v}, rep, fair_pow
 
 
 def _pm_outcomes(game: Game, team: str) -> list[Outcome]:
@@ -110,9 +115,10 @@ def vegas_opportunities(game: Game, s: Settings) -> list[Opportunity]:
                 side="bet", label=f"BET {tname} {q.american:+d} @{q.bookmaker}", qty=qty,
                 avg_price=stake_per_payout, cost=qty * stake_per_payout, fee=0.0,
                 meta={"american": q.american, "decimal": q.decimal, "team": team, "team_name": tname,
-                      "league": game.league, "espn_event_id": game.espn_event_id,
+                      "espn_team": q.espn_team or team, "league": game.league, "espn_event_id": game.espn_event_id,
                       "start": game.start.isoformat() if game.start else None, "bookmaker": q.bookmaker,
-                      "home": game.home, "away": game.away, "fee_rate": 0.0, "fee_round": False},
+                      "home": game.espn_home or game.home, "away": game.espn_away or game.away,
+                      "fee_rate": 0.0, "fee_round": False},
             )
             opp.legs.insert(0, book_leg)
             opp.cost += book_leg.cost
@@ -122,7 +128,7 @@ def vegas_opportunities(game: Game, s: Settings) -> list[Opportunity]:
 
 
 def discrepancies(game: Game) -> list[Discrepancy]:
-    fair, rep = fair_probs(game)
+    fair, rep, fair_pow = fair_probs(game)
     if not fair:
         return []
     out = []
@@ -133,5 +139,5 @@ def discrepancies(game: Game) -> list[Discrepancy]:
             eb = None if o.yes_ask is None else f - o.yes_ask
             es = None if o.yes_bid is None else o.yes_bid - f
             out.append(Discrepancy(game.key, game.league, label, game.team_name(team), o.venue, q.bookmaker,
-                                   q.american, q.implied, f, o.yes_bid, o.yes_ask, eb, es))
+                                   q.american, q.implied, f, fair_pow.get(team), o.yes_bid, o.yes_ask, eb, es))
     return out

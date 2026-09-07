@@ -121,9 +121,10 @@ class BookOdds:
     """A sportsbook moneyline quote for one team."""
 
     bookmaker: str
-    team: str  # canonical team id
+    team: str  # canonical team id (registry id)
     american: int
     decimal: float
+    espn_team: str | None = None  # ESPN team id, used to settle the sportsbook leg
 
     @property
     def implied(self) -> float:
@@ -145,6 +146,8 @@ class Game:
     polymarket: dict[str, Outcome] = field(default_factory=dict)
     sportsbook: dict[str, list[BookOdds]] = field(default_factory=dict)  # team id -> quotes
     espn_event_id: str | None = None
+    espn_home: str | None = None  # ESPN team ids (equal to home/away when the registry is ESPN's)
+    espn_away: str | None = None
     espn_state: str = ""  # pre | in | post (when ESPN knows the game)
     exact_start: bool = False  # start came from Polymarket/ESPN (not just Kalshi's date)
 

@@ -75,7 +75,8 @@ class Settler:
                 except Exception:
                     self._espn_cache[key] = []
             games.extend(self._espn_cache[key])
-        team, home, away = leg.meta.get("team"), leg.meta.get("home"), leg.meta.get("away")
+        team = leg.meta.get("espn_team") or leg.meta.get("team")
+        home, away = leg.meta.get("home"), leg.meta.get("away")
         g = next((x for x in games if x.id == leg.meta.get("espn_event_id")), None)
         if g is None:
             g = next((x for x in games if {str(x.home["id"]), str(x.away["id"])} == {home, away}), None)

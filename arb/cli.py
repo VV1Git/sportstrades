@@ -21,8 +21,13 @@ from .store import Store
 
 
 def _leagues(arg: str | None) -> list[str]:
+    from .config import NICHE_LEAGUES
     if not arg or arg == "all":
         return list(DEFAULT_LEAGUES)
+    if arg == "niche":
+        return list(NICHE_LEAGUES)
+    if arg == "everything":
+        return list(DEFAULT_LEAGUES) + list(NICHE_LEAGUES)
     out = [x.strip().lower() for x in arg.split(",") if x.strip()]
     bad = [x for x in out if x not in LEAGUES]
     if bad:
@@ -42,6 +47,8 @@ def _settings(args) -> Settings:
 def _print_scan(res, args, show_games: bool = True, show_vegas: bool = True, show_opps: bool = True) -> None:
     if show_games and res.games:
         console.print(report.games_table(res.games))
+    if res.games:
+        console.print(report.league_gap_table(res.games))
     if res.unmatched_notes and args.verbose:
         for n in res.unmatched_notes[:40]:
             console.print(f"[dim]{n}")
@@ -134,6 +141,7 @@ def cmd_match(args) -> None:
     sc = Scanner(s, _leagues(args.leagues), scope=args.scope, paper=False, quiet=args.quiet)
     res = sc.run()
     console.print(report.games_table(res.games))
+    console.print(report.league_gap_table(res.games))
     for n in res.unmatched_notes[:60]:
         console.print(f"[dim]{n}")
     if args.scope == "all":
@@ -147,6 +155,31 @@ def cmd_match(args) -> None:
                       c.polymarket.meta.get("question", c.polymarket.title)[:70],
                       report.price(c.kalshi.yes_ask), report.price(c.polymarket.yes_ask), report.pct(gap))
         console.print(t)
+
+
+def cmd_live(args) -> None:
+    from .live import LiveSampler
+    s = _settings(args)
+    ls = LiveSampler(s, _leagues(args.leagues), interval=args.interval, pregame_hours=args.pregame_hours,
+                     rematch_every=args.rematch_every, quiet=args.quiet, max_games=args.max_games)
+    console.print(f"[bold]Live sampler[/bold] every {args.interval}s on {', '.join(ls.leagues)}"
+                  f"{' for ' + str(args.duration) + 's' if args.duration else ' until Ctrl-C'}; games within {args.pregame_hours}h are the pre-game control.")
+    n = ls.run(duration=args.duration)
+    console.print(f"recorded {n} ticks in session #{ls.session_id}")
+    from .live import analyze
+    from .live_report import print_live_analysis
+    print_live_analysis(analyze(ls.store, ls.session_id))
+
+
+def cmd_live_report(args) -> None:
+    from .live import analyze
+    from .live_report import print_live_analysis
+    s = _settings(args)
+    a = analyze(Store(s.db_path), args.session)
+    if args.json:
+        print(json.dumps(a, indent=1, default=str))
+        return
+    print_live_analysis(a)
 
 
 def cmd_settle(args) -> None:
@@ -173,7 +206,7 @@ def cmd_report(args) -> None:
         if discs:
             from .vegas import Discrepancy
             rows = [Discrepancy(r["match_key"], r["league"], r["game"], r["team"], r["venue"], r["bookmaker"], r["american"],
-                                r["implied"], r["fair"], r["pm_bid"], r["pm_ask"], r["edge_buy"], r["edge_sell"]) for r in discs]
+                                r["implied"], r["fair"], r["fair_power"], r["pm_bid"], r["pm_ask"], r["edge_buy"], r["edge_sell"]) for r in discs]
             console.print(report.discrepancy_table(rows, limit=args.top, min_abs_edge=args.min_edge))
 
 
@@ -182,7 +215,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp, scope=True):
-        sp.add_argument("--leagues", default=None, help="comma list, e.g. nfl,mlb (default: all supported)")
+        sp.add_argument("--leagues", default=None, help="comma list, e.g. nfl,mlb; or 'all' (major leagues, default), 'niche' (tennis, esports, KBO/NPB/KHL, 2nd-tier soccer), 'everything'")
         if scope:
             sp.add_argument("--scope", choices=["sports", "all"], default="sports",
                             help="sports: game markets only (fast). all: also crawl every open market on both venues and fuzzy-match non-sports events")
@@ -217,6 +250,20 @@ def main(argv: list[str] | None = None) -> None:
     sp = sub.add_parser("match", help="show how markets were matched across venues")
     common(sp)
     sp.set_defaults(fn=cmd_match)
+
+    sp = sub.add_parser("live", help="sample Kalshi vs Polymarket every few seconds for games in progress")
+    common(sp, scope=False)
+    sp.add_argument("--interval", type=float, default=5.0)
+    sp.add_argument("--duration", type=float, default=0.0, help="seconds to run (0 = until Ctrl-C)")
+    sp.add_argument("--pregame-hours", type=float, default=6.0, help="also sample games starting within N hours as a control")
+    sp.add_argument("--rematch-every", type=float, default=600.0, help="seconds between re-matching games across venues")
+    sp.add_argument("--max-games", type=int, default=24, help="cap on tracked games (live first, then soonest)")
+    sp.set_defaults(fn=cmd_live)
+
+    sp = sub.add_parser("live-report", help="analyse recorded live samples: pre-game vs in-game decoupling")
+    common(sp, scope=False)
+    sp.add_argument("--session", type=int, default=None)
+    sp.set_defaults(fn=cmd_live_report)
 
     sp = sub.add_parser("settle", help="settle open paper trades against resolutions")
     common(sp, scope=False)

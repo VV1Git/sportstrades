@@ -26,10 +26,11 @@ class League:
     kalshi_series: str  # Kalshi game-winner series ticker
     poly_sport: str  # Polymarket /sports key
     poly_tag: int  # Polymarket primary tag id
-    espn: str  # ESPN path: <sport>/<league>
+    espn: str | None  # ESPN path: <sport>/<league>; None -> no team registry / no sportsbook line
     odds_api: str | None = None  # The Odds API sport key
     three_way: bool = False  # soccer: draw is a real outcome
     espn_extra: dict | None = None  # extra scoreboard params (e.g. groups=80 for FBS)
+    dynamic_registry: bool = False  # match venues by clustering their own names; ESPN (if any) only supplies lines/status
 
 
 LEAGUES: dict[str, League] = {
@@ -53,7 +54,42 @@ LEAGUES: dict[str, League] = {
                   "soccer_uefa_champs_league", True),
 }
 
+# Niche leagues both venues list game markets for. No ESPN team registry: participants are
+# clustered from the venues' own names (see teams.DynamicRegistry), and no sportsbook line.
+NICHE: dict[str, League] = {
+    "itf_m": League("itf_m", "ITF Men's tennis", "KXITFMATCH", "itf", 104923, None),
+    "itf_w": League("itf_w", "ITF Women's tennis", "KXITFWMATCH", "itf", 104923, None),
+    "atp": League("atp", "ATP tennis", "KXATPMATCH", "atp", 101232, None, "tennis_atp"),
+    "wta": League("wta", "WTA tennis", "KXWTAMATCH", "wta", 102123, None, "tennis_wta"),
+    "cs2": League("cs2", "Counter-Strike 2", "KXCS2GAME", "cs2", 100780, None),
+    "dota2": League("dota2", "Dota 2", "KXDOTA2GAME", "dota2", 102366, None),
+    "lol": League("lol", "League of Legends", "KXLOLGAME", "lol", 65, None),
+    "valorant": League("valorant", "Valorant", "KXVALORANTGAME", "val", 101672, None),
+    "r6": League("r6", "Rainbow Six", "KXR6GAME", "r6siege", 102755, None),
+    "khl": League("khl", "KHL hockey", "KXKHLGAME", "khl", 102908, None),
+    "npb": League("npb", "NPB baseball", "KXNPBGAME", "npb", 105452, None),
+    "kbo": League("kbo", "KBO baseball", "KXKBOGAME", "kbo", 102668, None),
+    "championship": League("championship", "EFL Championship", "KXEFLCHAMPIONSHIPGAME", "elc", 102643, "soccer/eng.2", "soccer_efl_champ", True, dynamic_registry=True),
+    "league_one": League("league_one", "EFL League One", "KXEFLL1GAME", "el1", 104319, None, three_way=True),
+    "ligamx": League("ligamx", "Liga MX", "KXLIGAMXGAME", "mex", 102448, "soccer/mex.1", "soccer_mexico_ligamx", True, dynamic_registry=True),
+    "brasileirao": League("brasileirao", "Brasileirão Série A", "KXBRASILEIROGAME", "bra", 102648, "soccer/bra.1", "soccer_brazil_campeonato", True, dynamic_registry=True),
+    "brasileirao_b": League("brasileirao_b", "Brasileirão Série B", "KXBRASILEIROBGAME", "bra2", 105921, "soccer/bra.2", "soccer_brazil_serie_b", True, dynamic_registry=True),
+    "saudi": League("saudi", "Saudi Pro League", "KXSAUDIPLGAME", "spl", 102650, None, three_way=True),
+    "uel": League("uel", "Europa League", "KXUELGAME", "uel", 101787, "soccer/uefa.europa", "soccer_uefa_europa_league", True, dynamic_registry=True),
+    "eredivisie": League("eredivisie", "Eredivisie", "KXEREDIVISIEGAME", "ere", 101735, "soccer/ned.1", "soccer_netherlands_eredivisie", True, dynamic_registry=True),
+    "kleague": League("kleague", "K League 1", "KXKLEAGUEGAME", "kor", 102771, None, three_way=True),
+    "jleague": League("jleague", "J1 League", "KXJLEAGUEGAME", "jap", 102649, "soccer/jpn.1", "soccer_japan_j_league", True, dynamic_registry=True),
+    "usl": League("usl", "USL Championship", "KXUSLGAME", "uslc", 105703, "soccer/usa.usl.1", None, True, dynamic_registry=True),
+    "ligue2": League("ligue2", "Ligue 2", "KXLIGUE2GAME", "fr2", 102871, "soccer/fra.2", "soccer_france_ligue_two", True, dynamic_registry=True),
+    "liga_portugal": League("liga_portugal", "Liga Portugal", "KXLIGAPORTUGALGAME", "por", 101772, "soccer/por.1", "soccer_portugal_primeira_liga", True, dynamic_registry=True),
+    "egypt": League("egypt", "Egyptian Premier League", "KXEGYPLGAME", "egy1", 105919, None, three_way=True),
+    "serie_b": League("serie_b", "Serie B", "KXSERIEBGAME", "itsb", 102870, "soccer/ita.2", "soccer_italy_serie_b", True, dynamic_registry=True),
+    "eerste": League("eerste", "Eerste Divisie", "KXEERSTEDIVGAME", "ned2", 105727, "soccer/ned.2", None, True, dynamic_registry=True),
+}
+LEAGUES.update(NICHE)
+
 DEFAULT_LEAGUES = ["nfl", "ncaaf", "nba", "wnba", "mlb", "nhl", "epl", "laliga", "bundesliga", "seriea", "ligue1", "mls", "ucl"]
+NICHE_LEAGUES = list(NICHE)
 
 KALSHI_SERIES_TO_LEAGUE = {lg.kalshi_series: lg.key for lg in LEAGUES.values()}
 POLY_TAG_TO_LEAGUE = {lg.poly_tag: lg.key for lg in LEAGUES.values()}

@@ -70,6 +70,9 @@ class TeamRegistry:
         t = self.teams.get(tid, {})
         return t.get("shortDisplayName") or t.get("abbreviation") or tid
 
+    def espn_team_id(self, team: dict) -> str | None:
+        return str(team["id"]) if team.get("id") is not None else None
+
     def resolve_abbr(self, abbr: str | None) -> str | None:
         if not abbr:
             return None
@@ -125,3 +128,102 @@ class TeamRegistry:
         if best:
             return self.choices[best[0]]
         return None
+
+
+# tokens that are club-name furniture for *clustering* venue names (smaller than _GENERIC on purpose:
+# 'real', 'sporting', 'united' are furniture for containment checks but distinguish clubs here)
+_FURNITURE = {"fc", "cf", "sc", "afc", "cfc", "ac", "as", "us", "ss", "ssc", "sv", "sl", "fk", "sk", "gf", "bk", "if",
+              "cd", "ud", "rcd", "rc", "ca", "kv", "vv", "tsg", "vfb", "vfl", "fsv", "bsc", "sg", "psv", "nk", "hk",
+              "club", "calcio", "de", "la", "le", "del", "do", "da", "esports", "esport", "gaming", "team", "hc"}
+
+
+class DynamicRegistry:
+    """Registry built from the participant names seen on the venues themselves,
+    for leagues where ESPN has no team list (tennis players, esports rosters,
+    KBO/NPB clubs). Names are clustered by similarity; each cluster is a
+    canonical id. Same interface as TeamRegistry (resolve / name / short).
+
+    Two names are the same participant when their informative tokens (club
+    furniture and bare numbers removed) are identical, or when the surname /
+    last word matches and the leading initials agree and no other cluster
+    competes for that surname."""
+
+    def __init__(self, league_key: str, names: list[str]):
+        self.league = league_key
+        self.clusters: list[list[str]] = []
+        self.display: dict[str, str] = {}
+        self._norm_to_id: dict[str, str] = {}
+        for raw in sorted({n.strip() for n in names if n and n.strip()}, key=lambda x: -len(x)):
+            n = norm(raw)
+            if not n or n in self._norm_to_id:
+                continue
+            tid = self._find(n)
+            if tid is None:
+                tid = str(len(self.clusters))
+                self.clusters.append([])
+                self.display[tid] = raw
+            self.clusters[int(tid)].append(n)
+            self._norm_to_id[n] = tid
+        self.teams = {tid: {"id": tid, "displayName": d} for tid, d in self.display.items()}
+
+    @staticmethod
+    def _informative(n: str) -> list[str]:
+        """Drop bare numbers and *trailing* furniture ('Venezia FC', 'Cagliari Calcio',
+        'Bounty Hunters Esports'). Leading furniture ('AC Milan' vs 'Inter Milan',
+        'FC Porto') is kept: it is often the only thing telling two clubs apart."""
+        toks = [t for t in n.split() if not t.isdigit() and len(t) > 1]
+        while len(toks) > 1 and toks[-1] in _FURNITURE:
+            toks.pop()
+        return toks
+
+    @staticmethod
+    def _same_person(a: list[str], b: list[str]) -> bool:
+        """'djokovic' vs 'novak djokovic', 'j sinner' vs 'jannik sinner', 'porto' vs 'fc porto'."""
+        if not a or not b or a[-1] != b[-1] or len(a[-1]) < 4:
+            return False
+        fa, fb = a[:-1], b[:-1]
+        if not fa or not fb:
+            return True
+        return fa[0][0] == fb[0][0] and (len(fa[0]) == 1 or len(fb[0]) == 1 or fa[0] == fb[0])
+
+    def _find(self, n: str) -> str | None:
+        ni = self._informative(n)
+        if not ni:
+            return None
+        exact: list[str] = []
+        surname: list[str] = []
+        for tid, members in enumerate(self.clusters):
+            for m in members:
+                mi = self._informative(m)
+                if mi == ni or (set(mi) == set(ni) and mi):
+                    exact.append(str(tid))
+                    break
+                if self._same_person(ni, mi):
+                    surname.append(str(tid))
+                    break
+        if exact:
+            return exact[0]
+        if len(set(surname)) == 1:
+            return surname[0]
+        return None
+
+    def resolve(self, text: str | None, abbr: str | None = None, min_score: float = 86.0) -> str | None:
+        n = norm(text or "")
+        if not n:
+            return None
+        if n in self._norm_to_id:
+            return self._norm_to_id[n]
+        return self._find(n)
+
+    def espn_team_id(self, team: dict) -> str | None:
+        for k in ("displayName", "shortDisplayName", "location", "name"):
+            tid = self.resolve(team.get(k)) if team.get(k) else None
+            if tid:
+                return tid
+        return None
+
+    def name(self, tid: str) -> str:
+        return self.display.get(tid, tid)
+
+    def short(self, tid: str) -> str:
+        return self.display.get(tid, tid)

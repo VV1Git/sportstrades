@@ -124,7 +124,9 @@ def build_games(league: str, kalshi_c: list[GameCandidate], poly_c: list[GameCan
     for c in poly_c:
         items.append(("poly", c, c.date, _cluster_key(c.legs), local_day(c.date)))
     for g in espn_games:
-        items.append(("espn", g, g.start, frozenset({str(g.home["id"]), str(g.away["id"])}), local_day(g.start)))
+        h, a = reg.espn_team_id(g.home), reg.espn_team_id(g.away)
+        if h and a and h != a:
+            items.append(("espn", g, g.start, frozenset({h, a}), local_day(g.start)))
     for g in oddsapi_games:
         h, a = reg.resolve(g.home_name), reg.resolve(g.away_name)
         if h and a:
@@ -149,9 +151,12 @@ def build_games(league: str, kalshi_c: list[GameCandidate], poly_c: list[GameCan
         home = away = None
         start = None
         espn_id = None
+        espn_home = espn_away = None
         for kind, obj, dt, _, _ in cl:
             if kind == "espn":
-                home, away, start, espn_id = str(obj.home["id"]), str(obj.away["id"]), obj.start, obj.id
+                home, away = reg.espn_team_id(obj.home), reg.espn_team_id(obj.away)
+                start, espn_id = obj.start, obj.id
+                espn_home, espn_away = str(obj.home["id"]), str(obj.away["id"])
                 break
         if home is None:
             for kind, obj, dt, _, _ in cl:
@@ -176,7 +181,8 @@ def build_games(league: str, kalshi_c: list[GameCandidate], poly_c: list[GameCan
         if start is None:
             start = next((dt for _, _, dt, _, _ in cl if dt is not None), None)
         g = Game(key=f"{league}:{day or 'nodate'}:{'-'.join(teams)}", league=league, start=start, home=home, away=away,
-                 home_name=reg.short(home), away_name=reg.short(away), espn_event_id=espn_id)
+                 home_name=reg.short(home), away_name=reg.short(away), espn_event_id=espn_id,
+                 espn_home=espn_home, espn_away=espn_away)
         g.exact_start = exact_start
         for kind, obj, dt, _, _ in cl:
             if kind == "kalshi":
@@ -185,8 +191,11 @@ def build_games(league: str, kalshi_c: list[GameCandidate], poly_c: list[GameCan
                 g.polymarket.update(obj.legs)
             elif kind == "espn":
                 g.espn_state = obj.state
+                espn_to_reg = {str(obj.home["id"]): home, str(obj.away["id"]): away}
                 for q in obj.odds:
-                    g.sportsbook.setdefault(q.team, []).append(q)
+                    rid = espn_to_reg.get(q.team, q.team)
+                    g.sportsbook.setdefault(rid, []).append(
+                        BookOdds(q.bookmaker, rid, q.american, q.decimal, espn_team=q.team))
             elif kind == "oddsapi":
                 for book, line in obj.lines.items():
                     for name, american in line.items():

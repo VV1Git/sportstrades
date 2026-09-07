@@ -52,6 +52,10 @@ class Store:
         self.db = sqlite3.connect(str(path))
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        try:  # columns added after the first release
+            self.db.execute("ALTER TABLE discrepancies ADD COLUMN fair_power REAL")
+        except sqlite3.OperationalError:
+            pass
 
     # -- scans ------------------------------------------------------------
     def start_scan(self, scope: str, leagues: list[str]) -> int:
@@ -135,9 +139,9 @@ class Store:
     def add_discrepancies(self, scan_id: int, rows: list[dict]) -> None:
         self.db.executemany(
             "INSERT INTO discrepancies(scan_id, ts, match_key, league, game, team, venue, bookmaker, american, implied,"
-            " fair, pm_bid, pm_ask, edge_buy, edge_sell) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " fair, fair_power, pm_bid, pm_ask, edge_buy, edge_sell) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(scan_id, now(), r["match_key"], r["league"], r["game"], r["team"], r["venue"], r["bookmaker"],
-              r["american"], r["implied"], r["fair"], r["pm_bid"], r["pm_ask"], r["edge_buy"], r["edge_sell"]) for r in rows])
+              r["american"], r["implied"], r["fair"], r.get("fair_power"), r["pm_bid"], r["pm_ask"], r["edge_buy"], r["edge_sell"]) for r in rows])
         self.db.commit()
 
     def discrepancies_for_scan(self, scan_id: int) -> list[sqlite3.Row]:

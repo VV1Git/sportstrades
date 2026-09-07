@@ -18,7 +18,7 @@ from .paper import PaperTrader
 from .polymarket import Polymarket
 from .report import console
 from .store import Store
-from .teams import TeamRegistry
+from .teams import DynamicRegistry, TeamRegistry
 from .vegas import Discrepancy, discrepancies, vegas_opportunities
 
 
@@ -58,9 +58,16 @@ class Scanner:
         if not self.quiet:
             console.log(msg)
 
-    def registry(self, league: str) -> TeamRegistry:
+    def registry(self, league: str, kalshi_outs: list[Outcome] | None = None,
+                 poly_outs: list[Outcome] | None = None):
         if league not in self.registries:
-            self.registries[league] = TeamRegistry(league, self.espn.teams(LEAGUES[league]))
+            if LEAGUES[league].espn and not LEAGUES[league].dynamic_registry:
+                self.registries[league] = TeamRegistry(league, self.espn.teams(LEAGUES[league]))
+            else:
+                names = [o.meta.get("yes_sub_title") or o.title for o in (kalshi_outs or []) if o.league == league]
+                names += [o.meta.get("team_text") or o.title for o in (poly_outs or [])
+                          if o.league == league and o.meta.get("sports_type") == "moneyline"]
+                self.registries[league] = DynamicRegistry(league, names)
         return self.registries[league]
 
     # ------------------------------------------------------------------
@@ -174,7 +181,8 @@ class Scanner:
         with ThreadPoolExecutor(max_workers=3) as ex:
             fk = ex.submit(self.fetch_kalshi)
             fp = ex.submit(self.fetch_poly)
-            fe = ex.submit(lambda: {lg: self.espn.scoreboard_range(LEAGUES[lg], days_ahead=2) for lg in self.leagues})
+            fe = ex.submit(lambda: {lg: self.espn.scoreboard_range(LEAGUES[lg], days_ahead=2)
+                                    for lg in self.leagues if LEAGUES[lg].espn})
             kalshi_outs, poly_outs, espn_games = fk.result(), fp.result(), fe.result()
         res.n_kalshi, res.n_poly = len(kalshi_outs), len(poly_outs)
         self.log(f"fetched {len(kalshi_outs)} Kalshi outcomes, {len(poly_outs)} Polymarket outcomes, "
@@ -190,7 +198,7 @@ class Scanner:
 
         games: list[Game] = []
         for lg in self.leagues:
-            reg = self.registry(lg)
+            reg = self.registry(lg, kalshi_outs, poly_outs)
             kc = kalshi_candidates(kalshi_outs, lg, reg)
             pc = poly_candidates(poly_outs, lg, reg)
             for c in kc + pc:
