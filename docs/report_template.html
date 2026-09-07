@@ -208,7 +208,7 @@ code{font-family:var(--mono);font-size:.92em}
   <h3>Largest one-minute signals</h3>
   <div class="tablewrap"><table><thead><tr><th>League</th><th>Game</th><th>Team</th><th>When (UTC)</th><th>Phase</th><th class=n>Kalshi bid / ask</th><th class=n>Poly price</th><th>Side</th><th class=n>Gross</th><th class=n>Net</th></tr></thead><tbody>$BT_TOP</tbody></table></div>
   <div class="prose">
-  <p class="muted">Alignment matters: Polymarket's history point stamped at minute <em>m</em> holds the price at the start of <em>m</em>, Kalshi's candle holds the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one minute; the first replay "found" $343 in six games that way. Shifted by one minute and checked against both venues' trade prints, the same six games show $5. The table uses the corrected alignment.</p>
+  <p class="muted">Two data quirks decide this result. Polymarket's history point stamped at minute <em>m</em> holds the price at the start of <em>m</em> while Kalshi's candle holds the close; read naively, every sharp in-game move looks like a 20-cent arbitrage for one minute, and the first replay "found" $343 in six games that way. And an empty or one-sided Polymarket book reports a mid of 0.50, which next to a Kalshi quote of 0.98 looks like a 48-cent arbitrage; a 30-day replay without the check reported $5,354. The table pairs Kalshi's close with Polymarket's next-minute point and only counts minutes where Polymarket's trade tape shows a trade within three minutes at a price within a dime of the history point.</p>
   </div>
 </section>
 

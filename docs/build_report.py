@@ -329,10 +329,12 @@ that also inherits any timing noise in minute data), and *persistent* signals st
 what a person watching two screens could act on.
 
 {hdr}{body}
-**Alignment.** Polymarket's history point stamped at minute *m* holds the price at the start of *m*; Kalshi's candle holds
-the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one minute, and the first replay
-"found" $343 in six games that way. Shifted by one minute and checked against both venues' trade prints, the same six
-games show $5. The table uses the corrected alignment.
+**Two data quirks decide this result.** Polymarket's history point stamped at minute *m* holds the price at the start
+of *m*; Kalshi's candle holds the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one
+minute, and the first replay "found" $343 in six games that way. And an empty or one-sided Polymarket book reports a
+mid of 0.50, which next to a Kalshi quote of 0.98 looks like a 48-cent arbitrage; a 30-day replay without the check
+reported $5,354. The table pairs Kalshi's close with Polymarket's next-minute point and only counts minutes where
+Polymarket's trade tape shows a trade within three minutes at a price within a dime of the history point.
 
 **Reading.** Pre-game minutes cross essentially never. In-game minutes cross in {ctx['BT_GROSS_LIVE']} of samples with the gap
 between midpoints rising from {ctx['BT_GAP_PRE']} to {ctx['BT_GAP_LIVE']}; a zero-latency taker would have booked {ctx['BT_PROFIT_1M']}

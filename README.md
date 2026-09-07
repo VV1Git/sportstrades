@@ -120,9 +120,13 @@ candlesticks (closing YES bid and ask per minute) and Polymarket's per-minute pr
 them and asks at each minute whether YES on one venue plus NO on the other would have cost less than $1 after fees.
 Polymarket's history is a mid price, so a spread is assumed (`--poly-spread`, default 2¢). Two numbers come out: profit
 if a zero-latency taker filled `--size` contracts on every one-minute signal (an upper bound), and profit on signals
-that were still there a full minute later (what a human-speed trader could act on). Polymarket's history point stamped
-at minute *m* holds the price at the *start* of *m*; the replay shifts it by one minute to line up with Kalshi's closes,
-which was verified against both venues' trade prints. Data is cached under `data/cache/hist/`.
+that were still there a full minute later (what a human-speed trader could act on).
+
+Two data quirks are handled explicitly, and both would otherwise manufacture arbitrage out of nothing. Polymarket's
+history point stamped at minute *m* holds the price at the *start* of *m*, so the replay pairs Kalshi's minute-*m* close
+with Polymarket's point stamped *m+1* (verified against both venues' trade prints). And an empty or one-sided Polymarket
+book reports a "mid" of 0.50, so a minute only counts when Polymarket's trade tape shows a trade within the previous
+three minutes at a price within a dime of the history point. Data is cached under `data/cache/hist/`.
 
 Findings from the first day of scans, including the in-game and niche-market analysis, are written up in
 [docs/ANALYSIS.md](docs/ANALYSIS.md).
