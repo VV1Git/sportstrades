@@ -130,4 +130,7 @@ class Settings:
             poly_fee_default=_f("POLY_FEE_RATE_DEFAULT", 0.05),
             book_max_stake=_f("BOOK_MAX_STAKE", 500.0),
             db_path=Path(os.getenv("PAPER_DB") or DATA_DIR / "paper.db"),
+            kalshi_rate=_f("KALSHI_RATE", 8.0),
+            gamma_rate=_f("GAMMA_RATE", 10.0),
+            clob_rate=_f("CLOB_RATE", 10.0),
         )

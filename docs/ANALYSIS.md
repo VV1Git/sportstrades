@@ -20,7 +20,8 @@
    game markets disagree across venues by 3–10 cents on average, three to six times the major-league gap, but their
    spreads are 20–50 cents wide and the resting size at the best price is a few dozen contracts. The best crossings
    were 2–3 cents, below the fee load, on books that would fill $20–40.
-5. **Matching, not math, is the risk.** Every false arbitrage the scanner ever reported came from matching the wrong
+5. **Replaying the last month minute by minute agrees.** REPLAY_SUMMARY
+6. **Matching, not math, is the risk.** Every false arbitrage the scanner ever reported came from matching the wrong
    game (a different day of the same MLB series) or the wrong question ("impeached *and removed*" vs "impeached
    *before his term ends*"). The remedies are exact local-date matching and refusing to auto-trade fuzzy pairs.
 
@@ -114,6 +115,10 @@ mirrors.
 ## 3. Do the venues decouple during games?
 
 LIVE_SECTION
+
+## 3b. Historical replay: what the last weeks would have paid
+
+REPLAY_SECTION
 
 ## 4. Niche markets
 

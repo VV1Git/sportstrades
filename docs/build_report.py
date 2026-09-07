@@ -307,6 +307,46 @@ def backtest_section(paths: list[str]) -> tuple[list[dict], dict]:
                   "BT_SPREAD": f"{runs[0]['poly_spread'] * 100:.0f}"}
 
 
+def replay_markdown(rows: list[dict], ctx: dict) -> tuple[str, str]:
+    if not rows:
+        return ("*(No replay has been run yet: `arb backtest --leagues mlb --days 30 --json`.)*",
+                "Run `arb backtest` to fill this in.")
+    hdr = ("| League | Games | Minutes pre / live | mean \\|mid gap\\| pre / live | best prices cross pre / live | 1-min signals pre / live | "
+           "profit, zero latency pre / live | persisted ≥2 min pre / live | profit, persistent pre / live |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+    f = lambda x, fmt="{:.1f}": "-" if x is None else fmt.format(x)
+    body = "".join(
+        f"| {r['name']} | {r['a']['games']} | {r['a']['pre_minutes']:,} / {r['a']['live_minutes']:,} | {c(r['a']['mean_mid_gap_pre'])} / {c(r['a']['mean_mid_gap_live'])} | "
+        f"{f(r['a']['gross_pct_pre'])}% / {f(r['a']['gross_pct_live'])}% | {r['a']['episodes_pre']} / {r['a']['episodes_live']} | "
+        f"${r['a']['profit_pre']:,.0f} / ${r['a']['profit_live']:,.0f} | {r['a']['persist_pre']} / {r['a']['persist_live']} | "
+        f"${r['a']['persist_profit_pre']:,.0f} / ${r['a']['persist_profit_live']:,.0f} |\n" for r in rows)
+    section = f"""**Method.** For every settled game matched across the venues in the last {ctx['BT_DAYS']} days ({ctx['BT_GAMES']} games,
+{ctx['BT_LEGS']} team-legs, {ctx['BT_MIN_PRE']} pre-game and {ctx['BT_MIN_LIVE']} in-game minutes) the replay pulls Kalshi's one-minute
+candlesticks (closing YES bid and ask each minute) and Polymarket's per-minute price history for the same team, aligns
+them, and asks at every minute whether YES on one venue plus NO on the other would have cost less than $1 after taker
+fees, with Polymarket's spread assumed at {ctx['BT_SPREAD']}¢ around its recorded price. Two figures come out: a
+*zero-latency taker* that fills {ctx['BT_SIZE']} contracts on every one-minute signal the instant it appears (an upper bound
+that also inherits any timing noise in minute data), and *persistent* signals still there a full minute later, roughly
+what a person watching two screens could act on.
+
+{hdr}{body}
+**Alignment.** Polymarket's history point stamped at minute *m* holds the price at the start of *m*; Kalshi's candle holds
+the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one minute, and the first replay
+"found" $343 in six games that way. Shifted by one minute and checked against both venues' trade prints, the same six
+games show $5. The table uses the corrected alignment.
+
+**Reading.** Pre-game minutes cross essentially never. In-game minutes cross in {ctx['BT_GROSS_LIVE']} of samples with the gap
+between midpoints rising from {ctx['BT_GAP_PRE']} to {ctx['BT_GAP_LIVE']}; a zero-latency taker would have booked {ctx['BT_PROFIT_1M']}
+over {ctx['BT_DAYS']} days at {ctx['BT_SIZE']} contracts a signal, and the signals that survived a second minute were worth
+{ctx['BT_PROFIT_PERSIST']}. The month-long replay says the same thing the one-night sampler said: the venues do come apart
+during games, for about a minute at a time, and the money in it is a latency race measured in tens of dollars a day, not
+a convergence trade.
+"""
+    summary = (f"Over {ctx['BT_DAYS']} days and {ctx['BT_GAMES']} games, a zero-latency taker acting on every one-minute crossing would have "
+               f"made {ctx['BT_PROFIT_1M']} at {ctx['BT_SIZE']} contracts a signal; signals that lasted a second minute were worth {ctx['BT_PROFIT_PERSIST']}. "
+               f"Pre-game minutes crossed in {ctx['BT_GROSS_PRE']} of samples, in-game minutes in {ctx['BT_GROSS_LIVE']}.")
+    return section, summary
+
+
 # ----------------------------------------------------------------------------- markdown (docs/ANALYSIS.md §3)
 def live_markdown(a: dict, ctx: dict) -> str:
     g = a["phases_by_group"]
@@ -470,6 +510,8 @@ def main() -> None:
         md = md.replace("LIVE_SECTION", live_markdown(a, ctx))
         md = md.replace("`LIVE_BOOK_CROSS_PCT`", ctx["STAT_REAL"]).replace("`LIVE_NET_PCT`", ctx["STAT_NET"])
         md = md.replace(" *(Filled in from session 3 below.)*", "")
+        sec, summ_line = replay_markdown(bt_rows, ctx)
+        md = md.replace("REPLAY_SECTION", sec).replace("REPLAY_SUMMARY", summ_line)
         md_path.write_text(md)
         print("updated docs/ANALYSIS.md live section")
     print(f"wrote {args.out} ({len(html) / 1024:.0f} KB); majors scan {maj_id}, niche scan {nic_id}, vegas scan {v.get('scan_id')}, live sessions {sessions}, series points {len(ser)}")
