@@ -209,15 +209,16 @@ class Polymarket:
                 return lg
         return None
 
-    def outcomes_from_event(self, e: dict, league: str | None = None) -> list[Outcome]:
+    def outcomes_from_event(self, e: dict, league: str | None = None, include_closed: bool = False) -> list[Outcome]:
         tags = [t.get("slug", "") for t in (e.get("tags") or [])]
         league = league or self._league_for_event(e)
         out: list[Outcome] = []
         for m in e.get("markets") or []:
-            if m.get("closed") or not m.get("active", True) or m.get("enableOrderBook") is False:
-                continue
-            if m.get("acceptingOrders") is False:
-                continue
+            if not include_closed:
+                if m.get("closed") or not m.get("active", True) or m.get("enableOrderBook") is False:
+                    continue
+                if m.get("acceptingOrders") is False:
+                    continue
             names = _json_list(m.get("outcomes"))
             tokens = _json_list(m.get("clobTokenIds"))
             prices = _json_list(m.get("outcomePrices"))
@@ -272,8 +273,38 @@ class Polymarket:
                     ))
         return out
 
-    def outcomes_from_events(self, events, league: str | None = None) -> list[Outcome]:
+    def outcomes_from_events(self, events, league: str | None = None, include_closed: bool = False) -> list[Outcome]:
         out: list[Outcome] = []
         for e in events:
-            out.extend(self.outcomes_from_event(e, league))
+            out.extend(self.outcomes_from_event(e, league, include_closed))
         return out
+
+    def closed_events_for_sport(self, sport_key: str, since: datetime, max_pages: int = 40) -> list[dict]:
+        """Closed (settled) game events for a sport, newest first, back to `since`."""
+        series_ids = [str(sp.get("series")) for sp in self.sports() if sp.get("sport") == sport_key and sp.get("series")]
+        out: dict[str, dict] = {}
+        for sid in series_ids:
+            offset = 0
+            for _ in range(max_pages):
+                try:
+                    d = self.gamma.get("events", {"series_id": sid, "closed": "true", "limit": 100, "offset": offset,
+                                                  "order": "endDate", "ascending": "false"})
+                except httpx.HTTPStatusError:
+                    break
+                if not d:
+                    break
+                stop = False
+                for e in d:
+                    out[str(e.get("id"))] = e
+                    starts = [parse_dt(m.get("gameStartTime")) for m in e.get("markets") or [] if m.get("gameStartTime")]
+                    if starts and max(starts) < since:
+                        stop = True
+                if stop or len(d) < 100:
+                    break
+                offset += 100
+        return list(out.values())
+
+    def price_history(self, token_id: str, start_ts: int, end_ts: int, fidelity: int = 1) -> list[tuple[int, float]]:
+        """Historical (roughly per-minute) price points for one token."""
+        d = self.clob.get("prices-history", {"market": token_id, "startTs": start_ts, "endTs": end_ts, "fidelity": fidelity})
+        return [(int(x["t"]), float(x["p"])) for x in (d.get("history") or []) if x.get("p") is not None]

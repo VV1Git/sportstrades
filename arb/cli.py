@@ -6,6 +6,7 @@ import json
 import sys
 import time
 from dataclasses import asdict
+from pathlib import Path
 
 from rich.table import Table
 
@@ -85,13 +86,49 @@ def cmd_scan(args) -> None:
     _print_scan(res, args, show_games=args.verbose or args.games)
 
 
+def _write_status(store: Store, path: str, res, taken: list[dict], settled: dict | None, n: int) -> None:
+    """Machine-readable snapshot for anything watching the always-on trader."""
+    from datetime import datetime, timezone
+    summ = store.summary()
+    snap = {
+        "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "scans_this_process": n,
+        "bankroll": store_settings_bankroll,
+        "cash_available": store_settings_bankroll - summ["deployed"] + summ["realized_pnl"],
+        "deployed": summ["deployed"],
+        "realized_pnl": summ["realized_pnl"],
+        "locked_in_profit_open": summ["expected_open_profit"],
+        "simulated_total_profit": summ["realized_pnl"] + summ["expected_open_profit"],
+        "trades_open": summ["trades_open"], "trades_settled": summ["trades_settled"],
+        "settled_wins": summ["settled_wins"],
+        "opportunities_logged": summ["opportunities"],
+        "last_scan": {"id": res.scan_id, "games": len(res.games), "kalshi_outcomes": res.n_kalshi, "poly_outcomes": res.n_poly,
+                      "opportunities": len(res.opportunities), "taken": taken, "seconds": round(res.duration, 1)},
+        "last_settlement": settled,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(path).with_suffix(".tmp")
+    tmp.write_text(json.dumps(snap, indent=1, default=str))
+    tmp.replace(path)
+    txt = (f"{snap['updated']}  scan #{res.scan_id}: {len(res.games)} games, {len(res.opportunities)} opps, {len(taken)} taken | "
+           f"open {summ['trades_open']} (${summ['deployed']:,.0f} deployed, ${summ['expected_open_profit']:+,.2f} locked in) | "
+           f"settled {summ['trades_settled']} realized ${summ['realized_pnl']:+,.2f} | simulated total ${snap['simulated_total_profit']:+,.2f}")
+    Path(path).with_suffix(".txt").write_text(txt + "\n")
+
+
+store_settings_bankroll = 10_000.0
+
+
 def cmd_run(args) -> None:
+    global store_settings_bankroll
     s = _settings(args)
+    store_settings_bankroll = s.bankroll
     leagues = _leagues(args.leagues)
-    console.print(f"[bold]Paper-trading loop[/bold] every {args.interval}s on {', '.join(leagues)} (scope={args.scope}). Ctrl-C to stop.")
+    console.print(f"[bold]Paper-trading loop[/bold] every {args.interval}s on {len(leagues)} leagues (scope={args.scope}). Ctrl-C to stop.")
     n = 0
     while True:
         n += 1
+        settled = None
         try:
             sc = Scanner(s, leagues, scope=args.scope, paper=not args.no_paper, quiet=True,
                          general_min_score=args.general_threshold, include_live=args.include_live)
@@ -99,9 +136,11 @@ def cmd_run(args) -> None:
             console.rule(f"scan {n} (#{res.scan_id}) {time.strftime('%H:%M:%S')}")
             _print_scan(res, args, show_games=False, show_vegas=args.verbose)
             if n % max(1, args.settle_every) == 0:
-                st = Settler(sc.store, sc.kalshi, sc.poly, sc.espn).run()
-                if st["settled"]:
-                    console.print(f"[cyan]settled {st['settled']} trades, P&L {st['pnl']:+,.2f}")
+                settled = Settler(sc.store, sc.kalshi, sc.poly, sc.espn).run(verbose=False)
+                if settled["settled"]:
+                    console.print(f"[cyan]settled {settled['settled']} trades, P&L {settled['pnl']:+,.2f}")
+            if args.status_file:
+                _write_status(sc.store, args.status_file, res, res.taken, settled, n)
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -183,6 +222,51 @@ def cmd_live_report(args) -> None:
     print_live_analysis(a)
 
 
+def cmd_backtest(args) -> None:
+    from .backtest import Backtester
+    s = _settings(args)
+    bt = Backtester(s, _leagues(args.leagues), days=args.days, poly_spread=args.poly_spread, size=args.size,
+                    quiet=args.quiet, max_games=args.max_games)
+    res = bt.run()
+    if args.json:
+        print(json.dumps(res, indent=1, default=str))
+        return
+    t = Table(title=f"Historical replay, last {res['days']} days: {res['games_matched']} matched games, "
+                    f"size {res['size']:.0f} contracts per signal, Polymarket spread assumed {res['poly_spread'] * 100:.0f}¢")
+    for c in ("League", "Games", "Legs", "Minutes pre / live", "|mid gap| pre / live", "gross cross % pre / live",
+              "net % pre / live", "1-min signals pre / live", "Profit (1-min) pre / live", "Persistent (≥2 min) pre / live",
+              "Profit (persistent) pre / live", "Best margin"):
+        t.add_column(c)
+
+    def row(name, a):
+        f = lambda x, fmt="{:.1f}": "-" if x is None else fmt.format(x)
+        t.add_row(name, str(a["games"]), str(a["legs"]), f"{a['pre_minutes']:,} / {a['live_minutes']:,}",
+                  f"{f(a['mean_mid_gap_pre'], '{:.3f}')} / {f(a['mean_mid_gap_live'], '{:.3f}')}",
+                  f"{f(a['gross_pct_pre'])}% / {f(a['gross_pct_live'])}%", f"{f(a['net_pct_pre'], '{:.2f}')}% / {f(a['net_pct_live'], '{:.2f}')}%",
+                  f"{a['episodes_pre']} / {a['episodes_live']}", f"${a['profit_pre']:,.0f} / ${a['profit_live']:,.0f}",
+                  f"{a['persist_pre']} / {a['persist_live']}", f"${a['persist_profit_pre']:,.0f} / ${a['persist_profit_live']:,.0f}",
+                  f"{a['best_margin'] * 100:.2f}%")
+    for lg, a in res["by_league"].items():
+        row(LEAGUES[lg].name if lg in LEAGUES else lg, a)
+    row("All", res["total"])
+    console.print(t)
+    tot = res["total"]
+    console.print(f"[bold]Simulated profit, zero-latency taker: ${tot['profit_pre'] + tot['profit_live']:,.2f}[/bold] over {res['days']} days "
+                  f"({res['games_with_any_profit']} of {res['games_total']} games produced any signal), every one-minute signal filled for "
+                  f"{res['size']:.0f} contracts on both venues.  "
+                  f"[bold]Signals that persisted a second minute: ${tot['persist_profit_pre'] + tot['persist_profit_live']:,.2f}[/bold]. "
+                  f"Replay took {res['seconds']:.0f}s.")
+    if res["top_signals"]:
+        t = Table(title="Largest signals")
+        for c in ("League", "Game", "Team", "When (UTC)", "Phase", "Kalshi bid/ask", "Poly mid", "Side", "Gross", "Net margin"):
+            t.add_column(c)
+        for x in res["top_signals"][:12]:
+            when = time.strftime("%m-%d %H:%M", time.gmtime(x["ts"]))
+            t.add_row(x["league"].upper(), x["game"].split(":")[1], x["team"], when, "live" if x["live"] else "pre",
+                      f"{x['k_bid']:.2f}/{x['k_ask']:.2f}", f"{x['p_mid']:.3f}", x["side"], f"{x['gross'] * 100:+.1f}¢", f"{x['net'] * 100:+.2f}%")
+        console.print(t)
+
+
 def cmd_settle(args) -> None:
     s = _settings(args)
     store = Store(s.db_path)
@@ -242,6 +326,7 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--max-scans", type=int, default=0)
     sp.add_argument("--settle-every", type=int, default=10, help="run settlement every N scans")
     sp.add_argument("--no-paper", action="store_true")
+    sp.add_argument("--status-file", default="data/status.json", help="JSON snapshot rewritten after every scan ('' to disable)")
     sp.set_defaults(fn=cmd_run)
 
     sp = sub.add_parser("vegas", help="sportsbook vs Kalshi/Polymarket comparison")
@@ -266,6 +351,14 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--session", type=int, default=None)
     sp.add_argument("--sessions", default=None, help="comma list of session ids to combine")
     sp.set_defaults(fn=cmd_live_report)
+
+    sp = sub.add_parser("backtest", help="replay past games minute by minute from Kalshi candles and Polymarket price history")
+    common(sp, scope=False)
+    sp.add_argument("--days", type=int, default=14)
+    sp.add_argument("--poly-spread", type=float, default=0.02, help="assumed Polymarket bid-ask spread (history is a mid price)")
+    sp.add_argument("--size", type=float, default=50.0, help="contracts filled per signal on each venue")
+    sp.add_argument("--max-games", type=int, default=None, help="cap games per league (most recent)")
+    sp.set_defaults(fn=cmd_backtest)
 
     sp = sub.add_parser("settle", help="settle open paper trades against resolutions")
     common(sp, scope=False)

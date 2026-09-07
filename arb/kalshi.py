@@ -73,9 +73,11 @@ class Kalshi:
                 break
 
     def markets(self, series_ticker: str | None = None, event_ticker: str | None = None,
-                status: str = "open", limit: int = 1000) -> list[dict]:
+                status: str = "open", limit: int = 1000, min_close_ts: int | None = None,
+                max_close_ts: int | None = None, max_pages: int = 50) -> list[dict]:
         out: list[dict] = []
         cursor = None
+        pages = 0
         while True:
             params: dict = {"limit": limit}
             if status:
@@ -84,6 +86,13 @@ class Kalshi:
                 params["series_ticker"] = series_ticker
             if event_ticker:
                 params["event_ticker"] = event_ticker
+            if min_close_ts:
+                params["min_close_ts"] = min_close_ts
+            if max_close_ts:
+                params["max_close_ts"] = max_close_ts
+            pages += 1
+            if pages > max_pages:
+                break
             if cursor:
                 params["cursor"] = cursor
             d = self.http.get("markets", params)
@@ -96,6 +105,23 @@ class Kalshi:
 
     def market(self, ticker: str) -> dict:
         return self.http.get(f"markets/{ticker}")["market"]
+
+    def candles(self, series_ticker: str, ticker: str, start_ts: int, end_ts: int, period: int = 1) -> list[dict]:
+        """One-minute (period=1), hourly (60) or daily (1440) candlesticks with
+        yes_bid / yes_ask OHLC, trade price OHLC and volume."""
+        d = self.http.get(f"series/{series_ticker}/markets/{ticker}/candlesticks",
+                          {"start_ts": start_ts, "end_ts": end_ts, "period_interval": period})
+        out = []
+        for c in d.get("candlesticks") or []:
+            try:
+                bid = float((c.get("yes_bid") or {}).get("close_dollars"))
+                ask = float((c.get("yes_ask") or {}).get("close_dollars"))
+            except (TypeError, ValueError):
+                continue
+            out.append({"ts": int(c["end_period_ts"]), "bid": bid if 0 < bid < 1 else None, "ask": ask if 0 < ask < 1 else None,
+                        "volume": float(c.get("volume_fp") or 0),
+                        "price": float(((c.get("price") or {}).get("close_dollars") or 0) or 0) or None})
+        return out
 
     def event(self, event_ticker: str) -> dict:
         return self.http.get(f"events/{event_ticker}", {"with_nested_markets": "true"})

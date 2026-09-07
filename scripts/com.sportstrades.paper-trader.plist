@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Optional: keep the paper trader running across logins/reboots.
+     Install (edit the path first if the repo lives elsewhere):
+       cp scripts/com.sportstrades.paper-trader.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.sportstrades.paper-trader.plist
+     Remove:
+       launchctl unload ~/Library/LaunchAgents/com.sportstrades.paper-trader.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.sportstrades.paper-trader</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>/Users/vedant/Documents/sportstrades/scripts/paper_trader.sh</string></array>
+  <key>WorkingDirectory</key><string>/Users/vedant/Documents/sportstrades</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/vedant/Documents/sportstrades/data/logs/launchd.out</string>
+  <key>StandardErrorPath</key><string>/Users/vedant/Documents/sportstrades/data/logs/launchd.err</string>
+</dict></plist>

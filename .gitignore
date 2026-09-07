@@ -9,3 +9,7 @@ data/cache/
 *.egg-info/
 .DS_Store
 .claude/launch.json
+data/logs/
+data/status.json
+data/status.txt
+data/status.tmp
