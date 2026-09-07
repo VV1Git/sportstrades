@@ -1,0 +1,10 @@
+# Confirmed non-sports market pairs across venues. `arb match --scope all` prints fuzzy
+# candidates; copy the ones you have verified mean exactly the same thing here and they
+# will be paper-traded on every `arb scan --scope all`.
+#
+# pairs:
+#   - kalshi: KXBTCVSGOLD-26                  # Kalshi market ticker
+#     polymarket: 0x1234abcd...               # Polymarket conditionId (or a YES token id)
+#     relation: same                          # "same" (Kalshi YES == Polymarket YES) or "complement"
+#     note: Bitcoin outperforms gold in 2026
+pairs: []
