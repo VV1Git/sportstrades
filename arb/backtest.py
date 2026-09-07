@@ -53,6 +53,7 @@ class LegResult:
     episodes_live: int = 0
     profit_pre: float = 0.0
     profit_live: float = 0.0
+    unbacked: int = 0  # signal minutes dropped because one venue had traded nothing in the last 3 minutes
     persist_pre: int = 0
     persist_live: int = 0
     persist_profit_pre: float = 0.0
@@ -158,6 +159,7 @@ class Backtester:
         rate_k, rate_p = k.fee_rate, p.fee_rate
         run_pre = run_live = False
         len_pre = len_live = 0
+        kvol: dict[int, float] = {c["ts"] // 60 - 1: c["volume"] for c in kc}
         for c in kc:
             m = c["ts"] // 60 - 1  # candle end -> the minute it covers
             if c["bid"] is None or c["ask"] is None:
@@ -207,13 +209,27 @@ class Backtester:
                 else:
                     res.gross_pre += 1
             if net > 0:
+                # executable size: the configured size, capped by what each venue actually traded in the
+                # last three minutes (the only depth proxy the history gives). No volume on a side -> unbacked.
+                pvol3 = sum(tmin[x][1] for x in (m, m - 1, m - 2) if x in tmin)
+                kvol3 = sum(kvol.get(x, 0.0) for x in (m, m - 1, m - 2))
+                size_eff = min(self.size, pvol3, kvol3)
+                if size_eff < 1.0:
+                    res.unbacked += 1
+                    if live:
+                        run_live = False
+                        len_live = 0
+                    else:
+                        run_pre = False
+                        len_pre = 0
+                    continue
                 if live:
                     res.net_live += 1
                 else:
                     res.net_pre += 1
                 running = run_live if live else run_pre
-                if not running:  # first minute of an episode: one trade at the configured size
-                    profit = net * self.size
+                if not running:  # first minute of an episode: one trade at the executable size
+                    profit = net * size_eff
                     if live:
                         res.episodes_live += 1
                         res.profit_live += profit
@@ -221,7 +237,8 @@ class Backtester:
                         res.episodes_pre += 1
                         res.profit_pre += profit
                     res.signals.append({"ts": c["ts"], "live": live, "net": net, "gross": gross, "k_bid": c["bid"], "k_ask": c["ask"], "p_mid": pm,
-                                        "p_traded": tr[1], "side": "YES@K+NO@P" if net_a >= net_b else "YES@P+NO@K"})
+                                        "p_traded": pvol3, "k_traded": kvol3, "size": size_eff, "profit": profit,
+                                        "side": "YES@K+NO@P" if net_a >= net_b else "YES@P+NO@K"})
                 if net > res.best_margin:
                     res.best_margin, res.best_minute = net, c["ts"]
                 if live:
@@ -229,13 +246,13 @@ class Backtester:
                     len_live += 1
                     if len_live == 2:  # the signal has survived a full minute: a human-speed trader could act on it
                         res.persist_live += 1
-                        res.persist_profit_live += net * self.size
+                        res.persist_profit_live += net * size_eff
                 else:
                     run_pre = True
                     len_pre += 1
                     if len_pre == 2:
                         res.persist_pre += 1
-                        res.persist_profit_pre += net * self.size
+                        res.persist_profit_pre += net * size_eff
             else:
                 if live:
                     run_live = False
@@ -271,7 +288,7 @@ class Backtester:
             pre = mins - live
             return {
                 "legs": len(rs), "games": len({r.game_key for r in rs}), "minutes": mins, "pre_minutes": pre, "live_minutes": live,
-                "candle_minutes": sum(r.candle_minutes for r in rs),
+                "candle_minutes": sum(r.candle_minutes for r in rs), "unbacked": sum(r.unbacked for r in rs),
                 "mean_mid_gap": (sum(r.mid_gap_sum for r in rs) / mins) if mins else None,
                 "mean_mid_gap_live": (sum(r.mid_gap_live_sum for r in rs) / live) if live else None,
                 "mean_mid_gap_pre": ((sum(r.mid_gap_sum for r in rs) - sum(r.mid_gap_live_sum for r in rs)) / pre) if pre else None,
@@ -288,7 +305,7 @@ class Backtester:
         by_league = {lg: agg([r for r in results if r.league == lg]) for lg in sorted({r.league for r in results})}
         total = agg(results)
         top = sorted((s | {"league": r.league, "game": r.game_key, "team": r.team_name} for r in results for s in r.signals),
-                     key=lambda x: -x["net"])[:15]
+                     key=lambda x: -x["profit"])[:15]
         # per-game profit distribution
         per_game: dict[str, float] = {}
         for r in results:

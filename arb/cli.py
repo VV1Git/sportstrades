@@ -253,17 +253,19 @@ def cmd_backtest(args) -> None:
     tot = res["total"]
     console.print(f"[bold]Simulated profit, zero-latency taker: ${tot['profit_pre'] + tot['profit_live']:,.2f}[/bold] over {res['days']} days "
                   f"({res['games_with_any_profit']} of {res['games_total']} games produced any signal), every one-minute signal filled for "
-                  f"{res['size']:.0f} contracts on both venues.  "
+                  f"up to {res['size']:.0f} contracts, capped by what both venues traded in the previous three minutes "
+                  f"({tot.get('unbacked', 0):,} signal-minutes dropped for no volume on one side).  "
                   f"[bold]Signals that persisted a second minute: ${tot['persist_profit_pre'] + tot['persist_profit_live']:,.2f}[/bold]. "
                   f"Replay took {res['seconds']:.0f}s.")
     if res["top_signals"]:
         t = Table(title="Largest signals")
-        for c in ("League", "Game", "Team", "When (UTC)", "Phase", "Kalshi bid/ask", "Poly mid", "Side", "Gross", "Net margin"):
+        for c in ("League", "Game", "Team", "When (UTC)", "Phase", "Kalshi bid/ask", "Poly price", "Traded 3 min K / P", "Side", "Gross", "Net margin", "Size", "Profit"):
             t.add_column(c)
         for x in res["top_signals"][:12]:
             when = time.strftime("%m-%d %H:%M", time.gmtime(x["ts"]))
             t.add_row(x["league"].upper(), x["game"].split(":")[1], x["team"], when, "live" if x["live"] else "pre",
-                      f"{x['k_bid']:.2f}/{x['k_ask']:.2f}", f"{x['p_mid']:.3f}", x["side"], f"{x['gross'] * 100:+.1f}¢", f"{x['net'] * 100:+.2f}%")
+                      f"{x['k_bid']:.2f}/{x['k_ask']:.2f}", f"{x['p_mid']:.3f}", f"{x.get('k_traded', 0):.0f} / {x.get('p_traded', 0):.0f}", x["side"],
+                      f"{x['gross'] * 100:+.1f}¢", f"{x['net'] * 100:+.2f}%", f"{x.get('size', 0):.0f}", f"${x.get('profit', 0):,.2f}")
         console.print(t)
 
 

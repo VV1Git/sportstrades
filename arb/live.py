@@ -313,14 +313,22 @@ def analyze(store: Store, session: int | None = None, sessions: list[int] | None
         rows = [dict(r) for r in store.db.execute(f"SELECT * FROM ticks WHERE session IN ({marks}) ORDER BY ts", sessions).fetchall()]
     else:
         rows = [dict(r) for r in store.db.execute("SELECT * FROM ticks ORDER BY ts").fetchall()]
+    # an empty or one-sided book (spread of 50c or more) is not a market; drop those ticks from the statistics
+    def _has_market(r: dict) -> bool:
+        for b, a in ((r["k_bid"], r["k_ask"]), (r["p_bid"], r["p_ask"])):
+            if b is None or a is None or a - b >= 0.5:
+                return False
+        return True
+    n_all = len(rows)
+    rows = [r for r in rows if _has_market(r)]
     sess = [dict(r) for r in store.db.execute("SELECT * FROM live_sessions ORDER BY id").fetchall()]
     interval = None
     if sessions:
         s_row = next((s for s in sess if s["id"] == sessions[-1]), None)
         interval = s_row["interval_s"] if s_row else None
     from .config import NICHE_LEAGUES
-    out: dict = {"sessions": sess, "n_ticks": len(rows), "phases": {}, "phases_by_group": {}, "games": [], "episodes": {},
-                 "top_moments": []}
+    out: dict = {"sessions": sess, "n_ticks": len(rows), "n_ticks_raw": n_all, "phases": {}, "phases_by_group": {}, "games": [],
+                 "episodes": {}, "top_moments": []}
 
     def _group(r: dict) -> str:
         return "niche" if r["league"] in NICHE_LEAGUES else "major"

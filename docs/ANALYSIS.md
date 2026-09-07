@@ -15,12 +15,12 @@
 3. **In-game decoupling is real but mostly phantom.** During live games Kalshi's *market list* endpoint shows the
    two venues crossing about one tick in eight, but the executable Kalshi order book pulled at the same instant
    agrees with Polymarket; the list lags the book by tens of seconds. Measured against the order book the crossing
-   rate falls to `LIVE_BOOK_CROSS_PCT` and the fee-positive rate to `LIVE_NET_PCT`. *(Filled in from session 3 below.)*
+   rate falls to 2.2% and the fee-positive rate to 0.32%.
 4. **Niche markets do decouple, and that is exactly why they cannot be traded.** ITF tennis, CS2, KHL, NPB and KBO
    game markets disagree across venues by 3–10 cents on average, three to six times the major-league gap, but their
    spreads are 20–50 cents wide and the resting size at the best price is a few dozen contracts. The best crossings
    were 2–3 cents, below the fee load, on books that would fill $20–40.
-5. **Replaying the last month minute by minute agrees.** REPLAY_SUMMARY
+5. **Replaying the last month minute by minute agrees.** Over 30 days and 3964 games, a zero-latency taker acting on every one-minute crossing would have made $3,778 at 50 contracts a signal; signals that lasted a second minute were worth $682. Pre-game minutes crossed in 6.7% of samples, in-game minutes in 7.2%.
 6. **Matching, not math, is the risk.** Every false arbitrage the scanner ever reported came from matching the wrong
    game (a different day of the same MLB series) or the wrong question ("impeached *and removed*" vs "impeached
    *before his term ends*"). The remedies are exact local-date matching and refusing to auto-trade fuzzy pairs.
@@ -114,11 +114,128 @@ mirrors.
 
 ## 3. Do the venues decouple during games?
 
-LIVE_SECTION
+**Hypothesis.** The two markets converge over long horizons but come apart in the high-volatility minutes of a live
+game, when each order book is re-priced by different people at different speeds.
+
+**Method.** Both venues were sampled every six seconds for every matched game in progress, with soon-to-start games as
+the control group, over 02:22–04:19 UTC on 7 September (40,429 venue-pair samples, 58 games).
+Two Kalshi quotes were recorded at each tick: the *market-list* endpoint (what a scanner naturally polls) and the
+*order-book* endpoint (what an order actually hits). Polymarket's order books were pulled in the same call. "Books
+cross" means the best prices on the two venues overlapped before fees; "phantom" means the list endpoint showed a
+crossing that the executable book did not.
+
+| Group / phase | Samples | Games | mean \|mid gap\| | p90 | max | books cross | phantom (list only) | net arb after fees | spreads K / P |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Major, in game | 2,984 | 3 | 0.4¢ | 1.0¢ | 12¢ | 5.0% | 18.6% | 0.10% | 1.1¢ / 1.1¢ |
+| Niche, before the game | 13,460 | 24 | 2.6¢ | 5.0¢ | 20¢ | 4.5% | 0.0% | 0.00% | 12.1¢ / 11.6¢ |
+| Niche, in game | 22,349 | 39 | 1.4¢ | 3.0¢ | 30¢ | 1.8% | 9.2% | 0.35% | 3.7¢ / 6.2¢ |
+
+**Major leagues in game** (3 games, 2,984 samples): executable books 0.4¢ apart on
+average (p90 1.0¢), crossing in 5.0% of samples. The list endpoint disagreed with the book by
+2.5¢ on average during play and produced a phantom crossing in 18.6% of samples. Fee-positive
+windows: 0.10%.
+
+**Niche leagues in game**: 1.4¢ apart while live against 2.6¢ before the start; books crossed in
+1.8% of live samples against 4.5% before, and 0.35% of live samples were fee-positive,
+all on books a few dozen contracts deep.
+
+**How long a window lasts**
+
+| Window | Phase | Episodes | one tick only | median length (s) | longest (s) | peak |
+|---|---|---:|---:|---:|---:|---:|
+| best prices cross (before fees) | before the game | 4 | 0 | 1098 | 1812 | 2.0¢ |
+| best prices cross (before fees) | in game | 251 | 172 | 6 | 326 | 16.0¢ |
+| profitable after fees and depth | before the game | 0 | 0 | - | - | - |
+| profitable after fees and depth | in game | 43 | 32 | 6 | 91 | 5.31% |
+
+**Fee-positive windows recorded**
+
+| Outcome | Phase | Start (UTC) | Ticks | Seconds | Peak margin | Game state |
+|---|---|---|---:|---:|---:|---|
+| Ko Suzuki | live | 04:14:14 | 2 | 8 | +5.31% |  |
+| FarmVille | live | 02:52:57 | 1 | 0 | +3.82% |  |
+| Nationals | live | 03:05:49 | 1 | 0 | +3.67% | Top 4th 1-1 |
+| Beyond Limits | live | 02:23:08 | 1 | 0 | +3.09% |  |
+| Jiaqi Wang | live | 03:42:33 | 1 | 0 | +2.82% |  |
+| Jerry Roddick | live | 03:58:43 | 1 | 0 | +2.74% |  |
+| Nationals | live | 03:10:22 | 1 | 0 | +2.41% | Top 4th 3-1 |
+| Jiaqi Wang | live | 03:46:11 | 1 | 0 | +2.12% |  |
+
+**The first-inning example.** At 02:11:54Z Polymarket moved the Dodgers from 0.60 to 0.66 in fifteen seconds; Kalshi's
+list endpoint kept showing 0.59/0.61 for another fifty seconds, then jumped to 0.66/0.67. Kalshi's trade tape printed
+zero trades in that window. Nobody took the 0.61 ask, because it was not there. Session 1 of the sampler polled only
+the list endpoint and "saw" the venues cross in 12% of live samples; sessions 3–4 polled the book as well and the real
+figure is the one in the table.
+
+**Reading.** In-game volatility does open gaps that pre-game trading never shows, and the biggest ones are in the
+thinnest books. Against executable prices the gaps are rarer, smaller and shorter than a list-endpoint scanner
+suggests; the fee-positive windows last seconds and sit on a few dozen contracts. The decoupling is real, but it is a
+latency race, not a convergence trade.
+
 
 ## 3b. Historical replay: what the last weeks would have paid
 
-REPLAY_SECTION
+**Method.** For every settled game matched across the venues in the last 30 days (3964 games,
+8194 team-legs, 232,833 pre-game and 460,097 in-game minutes) the replay pulls Kalshi's one-minute
+candlesticks (closing YES bid and ask each minute) and Polymarket's per-minute price history for the same team, aligns
+them, and asks at every minute whether YES on one venue plus NO on the other would have cost less than $1 after taker
+fees, with Polymarket's spread assumed at 2¢ around its recorded price. Two figures come out: a
+*zero-latency taker* that fills 50 contracts on every one-minute signal the instant it appears (an upper bound
+that also inherits any timing noise in minute data), and *persistent* signals still there a full minute later, roughly
+what a person watching two screens could act on.
+
+| League | Games | Minutes pre / live | mean \|mid gap\| pre / live | best prices cross pre / live | 1-min signals pre / live | profit, zero latency pre / live | persisted ≥2 min pre / live | profit, persistent pre / live |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| MLB | 397 | 77,338 / 109,823 | 0.4¢ / 0.5¢ | 1.2% / 3.8% | 0 / 895 | $0 / $720 | 0 / 18 | $0 / $16 |
+| Counter-Strike 2 | 656 | 33,912 / 80,833 | 1.8¢ / 1.5¢ | 23.3% / 12.2% | 416 / 1129 | $382 / $641 | 217 / 124 | $255 / $55 |
+| ITF Men's tennis | 976 | 2,656 / 41,179 | 1.5¢ / 0.9¢ | 17.8% / 6.1% | 11 / 503 | $6 / $289 | 4 / 32 | $3 / $15 |
+| ATP tennis | 150 | 17,756 / 35,529 | 0.7¢ / 0.6¢ | 5.5% / 4.9% | 20 / 283 | $43 / $218 | 14 / 10 | $32 / $8 |
+| ITF Women's tennis | 807 | 2,380 / 33,543 | 1.7¢ / 0.9¢ | 20.8% / 6.3% | 20 / 397 | $12 / $298 | 7 / 20 | $2 / $9 |
+| League of Legends | 130 | 10,741 / 27,463 | 0.9¢ / 1.1¢ | 10.2% / 11.8% | 20 / 239 | $22 / $198 | 4 / 19 | $21 / $87 |
+| WTA tennis | 140 | 9,814 / 25,769 | 0.7¢ / 0.6¢ | 4.3% / 4.9% | 24 / 210 | $60 / $158 | 18 / 9 | $49 / $7 |
+| WNBA | 65 | 10,768 / 13,132 | 0.6¢ / 0.6¢ | 4.3% / 7.0% | 0 / 72 | $0 / $45 | 0 / 6 | $0 / $4 |
+| Dota 2 | 78 | 2,657 / 13,018 | 1.6¢ / 1.4¢ | 21.1% / 9.9% | 25 / 183 | $23 / $126 | 14 / 22 | $14 / $55 |
+| MLS | 59 | 6,852 / 12,755 | 0.6¢ / 0.7¢ | 4.2% / 7.2% | 0 / 124 | $0 / $78 | 0 / 6 | $0 / $2 |
+| Valorant | 65 | 4,578 / 11,103 | 0.9¢ / 1.2¢ | 12.8% / 14.7% | 2 / 114 | $2 / $76 | 0 / 9 | $0 / $2 |
+| La Liga | 35 | 14,079 / 9,803 | 0.5¢ / 0.6¢ | 1.3% / 4.6% | 0 / 73 | $0 / $66 | 0 / 1 | $0 / $2 |
+| Premier League | 30 | 15,284 / 8,836 | 0.4¢ / 0.5¢ | 1.6% / 5.0% | 0 / 36 | $0 / $22 | 0 / 1 | $0 / $0 |
+| College Football | 107 | 2,094 / 7,543 | 0.5¢ / 0.9¢ | 4.3% / 9.0% | 3 / 130 | $0 / $55 | 2 / 9 | $4 / $2 |
+| Serie A | 25 | 6,364 / 6,700 | 0.5¢ / 0.6¢ | 1.2% / 4.6% | 1 / 46 | $2 / $26 | 0 / 0 | $0 / $0 |
+| Ligue 1 | 20 | 3,802 / 4,752 | 0.4¢ / 0.6¢ | 1.7% / 5.2% | 0 / 44 | $0 / $23 | 0 / 2 | $0 / $2 |
+| KBO baseball | 49 | 2,319 / 4,149 | 1.1¢ / 1.3¢ | 13.7% / 11.4% | 9 / 97 | $3 / $49 | 0 / 9 | $0 / $1 |
+| Bundesliga | 16 | 3,371 / 3,736 | 0.5¢ / 0.5¢ | 0.9% / 3.9% | 0 / 14 | $0 / $11 | 0 / 0 | $0 / $0 |
+| NPB baseball | 49 | 724 / 1,991 | 1.1¢ / 1.2¢ | 18.8% / 6.5% | 0 / 25 | $0 / $12 | 0 / 1 | $0 / $0 |
+| K League 1 | 12 | 1,285 / 1,809 | 0.6¢ / 1.3¢ | 4.4% / 12.5% | 0 / 63 | $0 / $35 | 0 / 9 | $0 / $6 |
+| Liga MX | 8 | 1,350 / 1,799 | 0.5¢ / 0.6¢ | 2.9% / 5.9% | 0 / 8 | $0 / $3 | 0 / 0 | $0 / $0 |
+| EFL Championship | 5 | 734 / 836 | 0.4¢ / 0.6¢ | 2.7% / 5.0% | 0 / 4 | $0 / $5 | 0 / 0 | $0 / $0 |
+| Egyptian Premier League | 4 | 328 / 636 | 0.8¢ / 0.8¢ | 8.8% / 7.1% | 0 / 12 | $0 / $4 | 0 / 0 | $0 / $0 |
+| Liga Portugal | 5 | 352 / 635 | 0.5¢ / 0.6¢ | 3.7% / 2.8% | 0 / 4 | $0 / $1 | 0 / 0 | $0 / $0 |
+| Serie B | 8 | 196 / 575 | 0.8¢ / 1.3¢ | 20.4% / 6.6% | 0 / 8 | $0 / $4 | 0 / 0 | $0 / $0 |
+| Brasileirão Série B | 5 | 120 / 360 | 0.5¢ / 0.8¢ | 0.0% / 8.1% | 0 / 9 | $0 / $7 | 0 / 1 | $0 / $2 |
+| USL Championship | 18 | 197 / 360 | 1.2¢ / 2.9¢ | 23.4% / 33.9% | 0 / 38 | $0 / $35 | 0 / 10 | $0 / $21 |
+| Ligue 2 | 3 | 46 / 305 | 0.7¢ / 1.4¢ | 6.5% / 6.2% | 0 / 6 | $0 / $2 | 0 / 0 | $0 / $0 |
+| Eerste Divisie | 7 | 93 / 231 | 0.5¢ / 2.3¢ | 6.5% / 10.8% | 0 / 9 | $0 / $5 | 0 / 1 | $0 / $0 |
+| EFL League One | 6 | 139 / 224 | 0.7¢ / 1.7¢ | 9.4% / 6.7% | 0 / 6 | $0 / $2 | 0 / 0 | $0 / $0 |
+| Rainbow Six | 21 | 154 / 217 | 1.8¢ / 3.1¢ | 15.6% / 8.3% | 1 / 4 | $0 / $3 | 0 / 2 | $0 / $4 |
+| Eredivisie | 1 | 149 / 166 | 0.4¢ / 0.5¢ | 3.4% / 4.2% | 0 / 3 | $0 / $0 | 0 / 0 | $0 / $0 |
+| Brasileirão Série A | 1 | 79 / 161 | 0.4¢ / 0.7¢ | 0.0% / 7.5% | 0 / 4 | $0 / $4 | 0 / 0 | $0 / $0 |
+| J1 League | 1 | 34 / 83 | 0.9¢ / 1.0¢ | 5.9% / 7.2% | 0 / 2 | $0 / $1 | 0 / 0 | $0 / $0 |
+| KHL hockey | 5 | 88 / 43 | 4.1¢ / 10.9¢ | 5.7% / 25.6% | 0 / 3 | $0 / $0 | 0 / 0 | $0 / $0 |
+
+**Two data quirks decide this result.** Polymarket's history point stamped at minute *m* holds the price at the start
+of *m*; Kalshi's candle holds the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one
+minute, and the first replay "found" $343 in six games that way. And an empty or one-sided Polymarket book reports a
+mid of 0.50, which next to a Kalshi quote of 0.98 looks like a 48-cent arbitrage; a 30-day replay without the check
+reported $5,354. The table pairs Kalshi's close with Polymarket's next-minute point and only counts minutes where
+Polymarket's trade tape shows a trade within three minutes at a price within a dime of the history point.
+
+**Reading.** Pre-game minutes cross essentially never. In-game minutes cross in 7.2% of samples with the gap
+between midpoints rising from 0.7¢ to 0.9¢; a zero-latency taker would have booked $3,778
+over 30 days at 50 contracts a signal, and the signals that survived a second minute were worth
+$682. The month-long replay says the same thing the one-night sampler said: the venues do come apart
+during games, for about a minute at a time, and the money in it is a latency race measured in tens of dollars a day, not
+a convergence trade.
+
 
 ## 4. Niche markets
 

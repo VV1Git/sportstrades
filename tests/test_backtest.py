@@ -87,8 +87,10 @@ def test_replay_prices_a_real_crossing_after_fees(monkeypatch):
     monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist, trades))
     r = bt.replay_leg("mlb", _game(start), "1")
     assert r.gross_live == 12 and r.net_live == 12
-    assert r.episodes_live == 1  # one episode of four consecutive minutes -> one trade
+    assert r.episodes_live == 1  # one episode of twelve consecutive minutes -> one trade
     assert r.persist_live == 1  # ...and it persisted, so it counts as actionable
     expected_net = 1 - (0.41 + 0.54) - (0.035 * 0.41 * 0.59 + 0.05 * 0.54 * 0.46)
-    assert abs(r.profit_live - expected_net * 100) < 1e-6
+    # size is capped by traded volume: at the first minute Kalshi has traded 1 contract in the window -> size 1
+    assert abs(r.profit_live - expected_net * 1) < 1e-6
+    assert r.signals[0]["size"] == 1
     assert r.signals[0]["side"] == "YES@K+NO@P"
