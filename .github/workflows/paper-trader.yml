@@ -8,20 +8,23 @@
 # run, so the repository never grows with binary history. The same database is
 # also uploaded as a build artifact each run, which gives you 30 days of rollback.
 #
-# Actions budget (free plan on a private repo is 2,000 minutes/month):
-#   a 13-league scan takes ~90 s, so a run costs ~3 minutes with setup.
-#   every 2 hours = 12 runs/day = ~1,080 min/month   <- the default, fits with room
-#   every hour    = 24 runs/day = ~2,160 min/month   <- over the free budget
-# Change the cron below to trade frequency for budget. Making the repository
-# public makes Actions minutes free and unlimited.
+# The repository is public, so Actions minutes are free and unlimited: frequency
+# is limited by GitHub's scheduler rather than by budget. Five minutes is the
+# documented floor for cron, and scheduled jobs on shared runners are routinely
+# delayed under load, so ten minutes is the useful practical setting. A run takes
+# about 3.3 minutes, which keeps a runner busy roughly a third of the time.
+#
+# Going faster has sharply diminishing returns: in-game pricing gaps last about
+# six seconds (see docs/ANALYSIS.md) and a scan itself takes minutes, so no cron
+# frequency reachable here is going to catch them. What frequency buys is more
+# independent samples of the market and quicker settlement.
 
 name: paper trader
 
 on:
   schedule:
-    # 17 minutes past every second hour: off the top of the hour, where GitHub's
-    # shared scheduler is most congested and cron fires late.
-    - cron: '17 */2 * * *'
+    # every 10 minutes; GitHub may still fire late when its schedulers are busy
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       leagues:
@@ -39,11 +42,16 @@ concurrency:
 
 permissions:
   contents: write            # to push the ledger branch
+  pages: write               # to publish the dashboard
+  id-token: write            # required by actions/deploy-pages
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # hard cap: a hung venue API cannot burn the budget
+    timeout-minutes: 12      # a hung venue API cannot block the next scheduled run for long
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
     env:
       PAPER_DB: ${{ github.workspace }}/data/cloud.db
       PAPER_BANKROLL: '10000'
@@ -85,9 +93,11 @@ jobs:
       - name: Settle finished games
         run: arb settle
 
-      - name: Build ledger summary
+      - name: Build ledger summary and dashboard
         run: |
           arb report --markdown ledger/STATUS.md
+          python docs/build_dashboard.py --db "$PAPER_DB" --out site/index.html \
+                 --bankroll "$PAPER_BANKROLL"
           cat ledger/STATUS.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish ledger
@@ -105,6 +115,14 @@ jobs:
           git push -q --force \
             "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ledger
           echo "ledger published: $(du -h cloud.db | cut -f1)"
+
+      - name: Publish dashboard to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: pages
+        uses: actions/deploy-pages@v4
 
       - uses: actions/upload-artifact@v4
         with:
