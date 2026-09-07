@@ -175,7 +175,8 @@ def cmd_live_report(args) -> None:
     from .live import analyze
     from .live_report import print_live_analysis
     s = _settings(args)
-    a = analyze(Store(s.db_path), args.session)
+    sessions = [int(x) for x in args.sessions.split(",")] if args.sessions else None
+    a = analyze(Store(s.db_path), args.session, sessions)
     if args.json:
         print(json.dumps(a, indent=1, default=str))
         return
@@ -263,6 +264,7 @@ def main(argv: list[str] | None = None) -> None:
     sp = sub.add_parser("live-report", help="analyse recorded live samples: pre-game vs in-game decoupling")
     common(sp, scope=False)
     sp.add_argument("--session", type=int, default=None)
+    sp.add_argument("--sessions", default=None, help="comma list of session ids to combine")
     sp.set_defaults(fn=cmd_live_report)
 
     sp = sub.add_parser("settle", help="settle open paper trades against resolutions")

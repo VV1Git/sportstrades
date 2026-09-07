@@ -1,0 +1,366 @@
+<title>Where Kalshi and Polymarket Disagree</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --paper:#f4f6f5; --surface:#ffffff; --ink:#141a18; --ink-2:#55605c; --ink-3:#7c8783;
+  --rule:#d9dfdb; --grid:#e8ece9; --kalshi:#0b7f5a; --poly:#3352c7; --bar:#4f66a8;
+  --phantom:rgba(199,122,26,.22); --phantom-key:#c77a1a; --tip:#ffffff; --shadow:0 6px 24px rgba(20,26,24,.10);
+  --sans:"Bricolage Grotesque",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#0f1312; --surface:#171c1a; --ink:#e9edeb; --ink-2:#a3aca8; --ink-3:#7c8783;
+    --rule:#2a322e; --grid:#232a27; --kalshi:#22a878; --poly:#6b7ae3; --bar:#7a8fd0;
+    --phantom:rgba(230,160,60,.26); --phantom-key:#e0a040; --tip:#1d2320; --shadow:0 6px 24px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#0f1312; --surface:#171c1a; --ink:#e9edeb; --ink-2:#a3aca8; --ink-3:#7c8783;
+  --rule:#2a322e; --grid:#232a27; --kalshi:#22a878; --poly:#6b7ae3; --bar:#7a8fd0;
+  --phantom:rgba(230,160,60,.26); --phantom-key:#e0a040; --tip:#1d2320; --shadow:0 6px 24px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--serif);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-color:var(--ink-3);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--ink)}
+:focus-visible{outline:2px solid var(--poly);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding:clamp(20px,4vw,52px) clamp(16px,4vw,40px) 80px}
+.prose{max-width:68ch}
+.prose p{margin:0 0 1.1em}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+h1{font:700 clamp(38px,6vw,64px)/1.02 var(--sans);letter-spacing:-.02em;margin:14px 0 18px;text-wrap:balance;font-variation-settings:"opsz" 96}
+h2{font:700 clamp(26px,3.2vw,34px)/1.12 var(--sans);letter-spacing:-.015em;margin:0 0 14px;text-wrap:balance}
+h3{font:600 20px/1.25 var(--sans);margin:28px 0 8px;letter-spacing:-.005em}
+.dek{font-size:21px;line-height:1.45;color:var(--ink-2);max-width:62ch;margin:0 0 30px;text-wrap:pretty}
+.dek em{font-style:italic;color:var(--ink)}
+section{margin:64px 0 0;padding-top:28px;border-top:1px solid var(--rule)}
+section .eyebrow{margin-bottom:12px;display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:0 0 8px}
+.stat{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:4px}
+.stat .v{font:600 38px/1 var(--sans);letter-spacing:-.02em}
+.stat .l{font-size:14px;color:var(--ink-2);line-height:1.35}
+.stat .k{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.lede{font-size:19px}
+.n,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;margin:18px 0 6px;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;line-height:1.35}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top;white-space:nowrap}
+th{font:600 12px/1.3 var(--sans);letter-spacing:.02em;color:var(--ink-2);background:var(--surface);position:sticky;top:0}
+th.n,td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:400}
+th .sub{display:block;font:400 11px/1.3 var(--mono);color:var(--ink-3);text-transform:none;letter-spacing:0}
+tr.total td{font-weight:600;border-top:2px solid var(--rule);border-bottom:0;background:var(--paper)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:color-mix(in oklab,var(--paper) 60%,var(--surface))}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:18px 18px 12px;margin:18px 0 8px;position:relative}
+.card h3{margin:0 0 4px}
+.card .cap{font-size:14px;color:var(--ink-2);margin:0 0 10px;max-width:80ch}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font:500 13px/1.3 var(--sans);color:var(--ink-2);margin:6px 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{display:inline-block;width:22px;height:0;border-top:2px solid;border-radius:2px}
+.legend i.sw{width:14px;height:12px;border:0;border-radius:2px}
+.legend i.dot{width:10px;height:10px;border:2px solid;border-radius:50%;background:var(--surface)}
+.legend i.dotf{width:10px;height:10px;border:2px solid;border-radius:50%}
+svg.chart{display:block;width:100%;height:auto;overflow:visible;cursor:crosshair}
+svg text{font-family:var(--mono);font-size:11px;fill:var(--ink-3);font-variant-numeric:tabular-nums}
+svg .grid line{stroke:var(--grid);stroke-width:1}
+svg .axis line{stroke:var(--rule);stroke-width:1}
+svg .kline{stroke:var(--kalshi);stroke-width:2;fill:none;stroke-linejoin:round;stroke-linecap:round}
+svg .pline{stroke:var(--poly);stroke-width:2;fill:none;stroke-linejoin:round;stroke-linecap:round}
+svg .phantom{fill:var(--phantom)}
+svg .cross{fill:var(--surface);stroke:var(--kalshi);stroke-width:2}
+svg .net{fill:var(--kalshi);stroke:var(--surface);stroke-width:2}
+svg .xhair{stroke:var(--ink-3);stroke-width:1;opacity:0}
+svg .hdot{stroke:var(--surface);stroke-width:2;opacity:0}
+svg .bar{fill:var(--bar)}
+svg .bar.hot{filter:brightness(1.12)}
+svg .barlabel{fill:var(--ink-2)}
+svg .grp{font-family:var(--sans);font-size:12px;font-weight:600;fill:var(--ink-2);letter-spacing:.04em}
+svg .hit{fill:transparent}
+.tip{position:absolute;pointer-events:none;background:var(--tip);color:var(--ink);border:1px solid var(--rule);border-radius:6px;box-shadow:var(--shadow);padding:10px 12px;font:13px/1.35 var(--sans);min-width:220px;display:none;z-index:2}
+.tip .t{font:500 11px/1.3 var(--mono);color:var(--ink-3);margin-bottom:6px;letter-spacing:.02em}
+.tip .row{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+.tip .row b{font:600 15px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.tip .row span{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)}
+.tip .row i{display:inline-block;width:14px;border-top:2px solid;border-radius:2px}
+.tip .gap{margin-top:6px;padding-top:6px;border-top:1px solid var(--rule);color:var(--ink-2)}
+details{margin:8px 0 0;font-size:14px}
+summary{cursor:pointer;font:500 13px/1.3 var(--sans);color:var(--ink-2);padding:6px 0}
+details .tablewrap{max-height:360px;overflow:auto;margin-top:8px}
+.callout{border-left:3px solid var(--phantom-key);padding:4px 0 4px 16px;margin:20px 0;color:var(--ink);font-size:16.5px;max-width:68ch}
+.muted{color:var(--ink-2)}
+ol.points{padding-left:1.2em;margin:0}
+ol.points li{margin:0 0 .8em}
+ol.points b{font-family:var(--sans);font-weight:600}
+pre{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;overflow-x:auto;font:13.5px/1.5 var(--mono);color:var(--ink)}
+code{font-family:var(--mono);font-size:.92em}
+.foot{margin-top:56px;padding-top:18px;border-top:1px solid var(--rule);font-size:13.5px;color:var(--ink-2);max-width:80ch}
+@media (max-width:640px){body{font-size:16px}.stat .v{font-size:32px}th,td{padding:7px 9px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">sportstrades · research note · 6–7 September 2026</span>
+  <h1>Where Kalshi and Polymarket disagree</h1>
+  <p class="dek">Two prediction markets, one sportsbook, 24 hours of scans and one night of in-game sampling. Everything below is <em>paper-only</em>: the scanner matched games, walked both order books, subtracted taker fees and recorded what a trade would have made. It placed no orders.</p>
+  <div class="stats">
+    <div class="stat"><span class="v">$STAT_GAP</span><span class="l">Mean mid-price gap between the two venues on the same team, major leagues ($STAT_LEGS legs, $STAT_GAMES games). $STAT_WITHIN1 of legs within a cent.</span></div>
+    <div class="stat"><span class="v">$STAT_CROSS</span><span class="l">Legs where the best prices crossed at all. Largest crossing $STAT_BEST, below the fee load at that price.</span></div>
+    <div class="stat"><span class="v">$STAT_INSIDE</span><span class="l">Prediction-market mids sitting inside the sportsbook's own vig band, where no book-plus-contract hedge can pay.</span></div>
+    <div class="stat"><span class="v">$STAT_PHANTOM</span><span class="l">In-game samples where Kalshi's <em>list</em> endpoint showed a crossing that its executable order book did not. Real crossings: $STAT_REAL. Fee-positive: $STAT_NET.</span></div>
+  </div>
+</header>
+
+<section id="summary">
+  <span class="eyebrow">The short version</span>
+  <div class="prose">
+  <ol class="points">
+    <li><b>On the same game, the two venues are almost never far enough apart to arbitrage.</b> The average gap is $STAT_GAP and taker fees on both legs of a 50/50 contract come to about 3¢. Net of fees the whole scan produced $STAT_TRADES paper hedges worth $STAT_LOCKED on $STAT_DEPLOYED deployed.</li>
+    <li><b>Vegas and the prediction markets agree to about a point once the vig is removed.</b> What looks like a Vegas inconsistency is mostly the de-vig method: proportional de-vig makes favorites look rich on the prediction markets, the power method makes them look fair. $STAT_INSIDE mids sat inside the sportsbook's own band.</li>
+    <li><b>In-game decoupling is real but mostly phantom.</b> During live games Kalshi's market-list endpoint disagreed with Polymarket far more often than its order book did; the list lags the book by tens of seconds. Measured against executable books, the venues crossed in $STAT_REAL of live samples and the crossing survived fees and depth in $STAT_NET.</li>
+    <li><b>Niche markets do decouple, and that is exactly why they cannot be traded.</b> ITF tennis, esports, KHL, NPB and KBO markets disagree by $NIC_GAP on average, more than double the major-league gap, but with $NIC_KSPREAD / $NIC_PSPREAD spreads and $NIC_DEPTH contracts resting at the best price.</li>
+    <li><b>Matching, not math, is the risk.</b> Every false arbitrage the scanner ever reported came from matching the wrong game (another day of the same MLB series) or the wrong question ("impeached <em>and removed</em>" vs "impeached <em>before his term ends</em>").</li>
+  </ol>
+  </div>
+</section>
+
+<section id="baseline">
+  <span class="eyebrow">Baseline</span>
+  <h2>How tight are the two prediction markets on the same game?</h2>
+  <div class="prose">
+  <p class="lede">Scan of 6 September 2026: $STAT_GAMES games matched across Kalshi and Polymarket in 13 major leagues, $STAT_LEGS team-legs quoted on both. A "leg" is one team's win contract; its mid-price gap is the difference between the two venues' bid/ask midpoints.</p>
+  <p>$MAJ_WITHIN1 of legs sit within one cent of each other and $MAJ_WITHIN2 within two. The larger averages for college football, MLS and La Liga come from games days away with wide quotes on both sides, not from the venues disagreeing about a liquid game. Where the best prices did cross, the crossing was one to three cents and the fee on the two legs is about the same, so nothing survived at size. The one 3¢ crossing (an MLB game) sat on a 27-contract book and paper-traded for $0.23.</p>
+  </div>
+  <div class="tablewrap">$MAJ_TABLE</div>
+  <div class="card" id="bars-card">
+    <h3>Mean mid-price gap by league</h3>
+    <p class="cap">Average absolute gap between the Kalshi and Polymarket midpoints for the same team, one bar per league. Major leagues from the 13-league scan; niche leagues from the 28-league scan. Hover a bar for spreads and crossings.</p>
+    <div id="bars"></div>
+  </div>
+</section>
+
+<section id="vegas">
+  <span class="eyebrow">Vegas</span>
+  <h2>The sportsbook line against the prediction markets</h2>
+  <div class="prose">
+  <p class="lede">$VEGAS_GAMES games carried a DraftKings moneyline (NFL week 1, MLB, college football, WNBA), giving $VEGAS_N team-and-venue comparisons. For each, the moneyline was de-vigged two ways and compared with the prediction-market midpoint.</p>
+  <p><b>Level.</b> The prediction markets sit $VEGAS_ALL_MULT_ABS points from the proportionally de-vigged line on average and $VEGAS_ALL_POW_ABS from the power-de-vigged one, in both directions, on both venues. There is no systematic lean once both sides of the line are used.</p>
+  <p><b>Favorites.</b> Restrict to the favorite in each game and the two methods disagree about the sign. Proportional de-vig says the prediction markets price favorites $VEGAS_FAV_MULT_MEAN points relative to fair ($VEGAS_FAV_MULT_ABOVE of $VEGAS_FAV_N above); power de-vig says $VEGAS_FAV_POW_MEAN ($VEGAS_FAV_POW_ABOVE of $VEGAS_FAV_N above). The prediction markets price favorites the way a power de-vig prices the sportsbook: they carry the same favorite–longshot bias Vegas does, and which method you pick decides whether that reads as an inconsistency.</p>
+  <p><b>Executability.</b> $STAT_INSIDE prediction-market mids sat <em>inside</em> the sportsbook's own vig band, between the implied probability of the team and one minus the implied probability of the opponent. Inside that band no combination of a book bet and a contract pays more than it costs. The exceptions were a WNBA line eleven days out that had gone stale (it produced the one book-plus-Polymarket hedge in the ledger, 0.75% on an assumed $500 stake) and a Cowboys–Giants disagreement of 2.8 points that was still short of the fee load.</p>
+  </div>
+  <div class="tablewrap">$VEGAS_TABLE</div>
+  <h3>Largest disagreements with the power-de-vigged line</h3>
+  <div class="tablewrap"><table><thead><tr><th>League</th><th>Game</th><th>Team</th><th>Venue</th><th class=n>ML</th><th class=n>Fair (prop.)</th><th class=n>Fair (power)</th><th class=n>PM bid / ask</th><th class=n>Mid − fair (pts)</th></tr></thead><tbody>$VEGAS_WORST</tbody></table></div>
+  <div class="prose">
+  <p class="muted">One sportsbook (DraftKings via ESPN), moneyline only, no visible depth. Best-of-many-books prices via The Odds API would widen the apparent gaps and are the obvious next test; the scanner supports it when a key is set. Soccer lines could not be de-vigged because the feed omits the draw price; the exact-hedge test still ran for soccer and found nothing. Ties: a sportsbook pushes a moneyline tie, Kalshi and Polymarket pay 0.50 per side, a small basis the settlement code mirrors.</p>
+  </div>
+</section>
+
+<section id="live">
+  <span class="eyebrow">In game</span>
+  <h2>Do the venues decouple while the game is on?</h2>
+  <div class="prose">
+  <p class="lede">The hypothesis: the two markets converge over long horizons but come apart in the high-volatility minutes of a live game, when each order book is re-priced by different people at different speeds. To test it, both venues were sampled every six seconds for every matched game in progress, with soon-to-start games as the control group, over $LIVE_SPAN on 7 September ($LIVE_TICKS venue-pair samples, $LIVE_GAMES games).</p>
+  <p>Two Kalshi quotes were recorded at each tick: the <em>market-list</em> endpoint, which is what a scanner naturally polls, and the <em>order-book</em> endpoint, which is what an order actually hits. Polymarket's order books were pulled in the same call.</p>
+  </div>
+  <div class="card" id="series-card">
+    <h3>$SERIES_TEAM to win: both venues' midpoints, tick by tick</h3>
+    <p class="cap">Executable order-book midpoints on Kalshi and Polymarket for the same outcome. Amber bands mark ticks where Kalshi's list endpoint showed a crossing the order book did not. Rings mark ticks where the books themselves crossed; a filled dot means the crossing survived fees and depth. Hover or use the arrow keys.</p>
+    <div class="legend"><span><i style="border-color:var(--kalshi)"></i>Kalshi (order book)</span><span><i style="border-color:var(--poly)"></i>Polymarket</span><span><i class="sw" style="background:var(--phantom)"></i>List endpoint only</span><span><i class="dot" style="border-color:var(--kalshi)"></i>Books crossed</span><span><i class="dotf" style="border-color:var(--kalshi);background:var(--kalshi)"></i>Profitable after fees</span></div>
+    <div id="series"></div>
+    <div class="tip" id="series-tip"></div>
+    <details><summary>Table view ($SERIES_N ticks)</summary><div class="tablewrap" id="series-table"></div></details>
+  </div>
+  <div class="prose">
+  <p><b>Major leagues in game.</b> Across $LIVE_MAJ_GAMES major-league games ($LIVE_MAJ_SAMPLES samples) the executable books sat $LIVE_MAJ_GAP apart on average, p90 $LIVE_MAJ_P90, and crossed in $LIVE_MAJ_CROSS of samples. The list endpoint disagreed with the book by $LIVE_MAJ_LISTDIFF on average during play and produced a phantom crossing in $LIVE_MAJ_PHANTOM of samples. Fee-positive windows: $LIVE_MAJ_NET.</p>
+  <p><b>Niche leagues in game.</b> ITF tennis, esports, KBO/NPB and KHL games were $LIVE_NIC_GAP apart while live against $LIVE_NIC_PRE_GAP before the start; books crossed in $LIVE_NIC_CROSS of live samples against $LIVE_NIC_PRE_CROSS before, and $LIVE_NIC_NET of live samples were fee-positive, all on books a few dozen contracts deep.</p>
+  <p><b>How long a window lasts.</b> $LIVE_GROSS_EP in-game episodes where the books crossed, median $LIVE_GROSS_MED seconds. $LIVE_NET_EP survived fees, median $LIVE_NET_MED seconds, longest $LIVE_NET_MAX. That is the time budget for two orders on two venues.</p>
+  </div>
+  <div class="callout">The first-inning example that motivated the second sampling session: at 02:11:54Z Polymarket moved the Dodgers from 0.60 to 0.66 in fifteen seconds; Kalshi's list endpoint kept showing 0.59/0.61 for another fifty seconds, then jumped to 0.66/0.67. Kalshi's trade tape printed <em>zero</em> trades in that window. Nobody took the 0.61 ask, because it was not there.</div>
+  <div class="tablewrap">$PHASE_TABLE</div>
+  <h3>Episode lengths</h3>
+  <div class="tablewrap">$EPISODE_TABLE</div>
+  <h3>Fee-positive windows recorded</h3>
+  <div class="tablewrap">$NET_LIST</div>
+</section>
+
+<section id="niche">
+  <span class="eyebrow">Niche</span>
+  <h2>Smaller markets, bigger gaps, no size</h2>
+  <div class="prose">
+  <p class="lede">Scan of 6 September over 28 leagues both venues list game markets for: ITF, ATP and WTA tennis, Counter-Strike, Dota 2, League of Legends, Valorant, Rainbow Six, KHL, NPB, KBO and second-tier soccer from the EFL Championship to the Egyptian Premier League. $NIC_GAMES games matched, $NIC_LEGS legs quoted on both venues.</p>
+  <p>Only $NIC_WITHIN1 of niche legs are within a cent (against $MAJ_WITHIN1 for the majors) and the mean gap is $NIC_GAP. But spreads are $NIC_KSPREAD on Kalshi and $NIC_PSPREAD on Polymarket against $MAJ_KSPREAD / $MAJ_PSPREAD for the majors, and the median size at the best price is $NIC_DEPTH contracts against $MAJ_DEPTH. The $NIC_CROSS crossings top out at the same 3¢ ceiling as the majors, on books that would fill twenty to forty dollars before the price moved. Where one venue quotes a real market and the other does not (USL: Kalshi 6¢ spread, Polymarket 58¢; KHL the reverse), the "disagreement" is the empty side.</p>
+  <p>The exception worth watching is main-tour tennis: thousands of contracts of depth and 1¢ spreads on both venues, major-league liquidity in a market with a fraction of the participants. It was tight on the day sampled and is the niche most worth running the live sampler on.</p>
+  </div>
+  <div class="tablewrap">$NIC_TABLE</div>
+</section>
+
+<section id="nonsports">
+  <span class="eyebrow">Non-sports</span>
+  <h2>Politics, culture and crypto pairs</h2>
+  <div class="prose">
+  <p><code>arb match --scope all</code> crawls every open market on both venues (about 100k Kalshi and 260k Polymarket outcomes in ninety seconds) and fuzzy-matches Kalshi non-sports markets to Polymarket questions. On the first crawl the top candidates were the Italian prime-minister race, the Florida Senate race, Avengers: Doomsday casting, Game of the Year, Bitcoin vs gold, the Clarity Act vote count and "Will Trump be impeached". Two of them show why this is a review queue and not a trading signal.</p>
+  <p><em>Will Trump be impeached and removed from office?</em> (Kalshi, 0.16) against <em>Will Trump be impeached before his term ends?</em> (Polymarket, 0.68) scored 100 on token-set similarity and showed a 49% "arbitrage". They are different events. Kalshi's <em>50 or more Senators</em> against Polymarket's <em>over 50 Senators</em> shares every number and differs by one inequality.</p>
+  <p>The scorer now averages token-set with token-sort similarity (the impeachment pair drops to 82 and out of the list), every number in both titles must agree, and no fuzzy pair trades until a person confirms it in <code>data/pairs.yaml</code>. Across the pairs that did look equivalent the top-of-book gaps ran from −4% to +2%.</p>
+  </div>
+</section>
+
+<section id="next">
+  <span class="eyebrow">What would change the answer</span>
+  <h2>Where an edge could still hide</h2>
+  <div class="prose">
+  <p><b>Several sportsbooks.</b> Best-of-market lines across eight to ten books routinely differ by five to ten cents of American odds. The scanner picks the best price per side when an Odds API key is present; these runs used one book.</p>
+  <p><b>Being the maker.</b> Every result assumes taker fees on both legs. Resting one leg (Polymarket charges makers nothing; Kalshi charges 0.0175 on some series) turns many 1–2¢ gaps positive, at the cost of the leg not filling.</p>
+  <p><b>Latency.</b> The in-game result says most crossings are stale-data artifacts and the real ones last seconds. Websocket feeds on both venues and co-located execution are the difference between observing them and capturing them.</p>
+  <p><b>Fee schedules.</b> Kalshi's fee is per order and rounded up; Polymarket's rate varies by category and has changed twice this year. A one-point move in either shifts the break-even gap by a third.</p>
+  <p><b>Settlement basis.</b> Ties, postponements and fair-price resolutions differ between venues. The ledger models the common cases; the rare ones are where a "risk-free" position stops being one.</p>
+  </div>
+</section>
+
+<section id="method">
+  <span class="eyebrow">Method</span>
+  <h2>What was measured, exactly</h2>
+  <div class="prose">
+  <p><b>Sources.</b> Kalshi public REST (markets, order books, series fee schedule); Polymarket Gamma (metadata) and CLOB (order books); ESPN's public scoreboard for DraftKings moneylines, game state and final scores.</p>
+  <p><b>Normalisation.</b> Everything becomes a $1-payout binary outcome. A Kalshi market's YES is one outcome; each Polymarket token is one outcome. NO is priced from the complementary token's asks on Polymarket and from the YES bids on Kalshi.</p>
+  <p><b>Matching.</b> League, both participants and the local calendar date. Participants resolve onto ESPN's team registry for major leagues and onto a registry clustered from the venues' own names for niche ones ("Cagliari Calcio" ↔ "Cagliari", "N. Djokovic" ↔ "Novak Djokovic", but "AC Milan" ≠ "Inter Milan"). Two games between the same teams on one date are skipped as ambiguous.</p>
+  <p><b>What counts as an arbitrage.</b> Buying $1-payout contracts on every outcome of a partition of the event space for less than $1 <em>after taker fees on both legs</em>, at sizes that rest in the two books when they are walked together. Kalshi taker fee: 0.07 × contracts × p(1−p), rounded up to the cent per order, times the series multiplier (MLB games 0.5). Polymarket: 0.05 × shares × p(1−p) on sports. At p = 0.5 the two legs together cost about 3¢ per contract; at p = 0.8 about 1.9¢.</p>
+  <p><b>Vegas.</b> An exact hedge (back a team at the book, buy NO on it at a prediction market; risk-free when 1/decimal + no_ask + fee &lt; 1) and a pricing comparison against the de-vigged line, proportional and power methods both reported.</p>
+  </div>
+  <h3>Reproduce</h3>
+<pre>arb scan --games                     # majors: tightness table, Vegas gaps, paper trades
+arb scan --leagues niche --games     # 28 niche leagues
+arb vegas --leagues nfl,mlb --json   # both de-vig methods
+arb live --leagues mlb,ncaaf --interval 6 --duration 7200   # during games
+arb live-report --sessions 3,4       # pre-game vs in-game decoupling
+arb match --scope all --top 30       # non-sports fuzzy candidates
+python docs/build_report.py          # rebuild this page from the ledger</pre>
+</section>
+
+<p class="foot">Generated $GEN_TS from <code>data/paper.db</code> by <code>docs/build_report.py</code> in the <a href="https://github.com/VV1Git/sportstrades">sportstrades</a> repository. Fee schedules: Kalshi fee schedule (July 2026); docs.polymarket.com, Trading fees. This is a research note, not investment advice, and the software places no orders.</p>
+</div>
+
+<script id="data" type="application/json">$DATA_JSON</script>
+<script>
+(function(){
+  var D = JSON.parse(document.getElementById('data').textContent);
+  function el(n, attrs, parent){ var e = document.createElementNS('http://www.w3.org/2000/svg', n); for (var k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function txt(node, s){ node.textContent = s; return node; }
+  function fmt3(x){ return x == null ? '-' : x.toFixed(3); }
+  function cents(x){ return x == null ? '-' : ((x*100 >= 0 ? '+' : '') + (x*100).toFixed(1) + '¢'); }
+  function hhmm(ms){ var d = new Date(ms); return ('0'+d.getUTCHours()).slice(-2) + ':' + ('0'+d.getUTCMinutes()).slice(-2); }
+  function hhmmss(ms){ var d = new Date(ms); return hhmm(ms) + ':' + ('0'+d.getUTCSeconds()).slice(-2); }
+  function niceStep(range, target){ var raw = range/target, p = Math.pow(10, Math.floor(Math.log(raw)/Math.LN10)); var c = raw/p; var s = c < 1.5 ? 1 : c < 3.5 ? 2 : c < 7.5 ? 5 : 10; return s*p; }
+
+  /* ---------------- time series ---------------- */
+  (function(){
+    var S = D.series, host = document.getElementById('series'), tip = document.getElementById('series-tip');
+    if (!S || S.length < 2){ host.textContent = 'No live samples were recorded for this game in the selected sessions.'; return; }
+    var W = 960, H = 380, m = {l:52, r:20, t:14, b:38};
+    var ts = S.map(function(r){ return Date.parse(r.t); });
+    var kmid = S.map(function(r){ return (r.kb + r.ka)/2; }), pmid = S.map(function(r){ return (r.pb + r.pa)/2; });
+    var t0 = ts[0], t1 = ts[ts.length-1];
+    var vmin = Math.min.apply(null, kmid.concat(pmid)), vmax = Math.max.apply(null, kmid.concat(pmid));
+    var ystep = niceStep(Math.max(0.02, vmax - vmin), 6);
+    var ymin = Math.floor((vmin - ystep*0.5)/ystep)*ystep, ymax = Math.ceil((vmax + ystep*0.5)/ystep)*ystep;
+    ymin = Math.max(0, ymin); ymax = Math.min(1, ymax);
+    var x = function(t){ return m.l + (t - t0)/(t1 - t0) * (W - m.l - m.r); };
+    var y = function(v){ return m.t + (ymax - v)/(ymax - ymin) * (H - m.t - m.b); };
+    var svg = el('svg', {viewBox:'0 0 '+W+' '+H, 'class':'chart', role:'img', tabindex:'0', 'aria-label': D.team + ' win probability on Kalshi and Polymarket, ' + S.length + ' ticks'}, host);
+    var deltas = []; for (var i = 1; i < ts.length; i++) deltas.push(ts[i]-ts[i-1]); deltas.sort(function(a,b){return a-b;}); var dt = deltas[Math.floor(deltas.length/2)] || 6000;
+    // phantom bands
+    var gPh = el('g', {}, svg);
+    S.forEach(function(r, i){ if (r.lgap != null && r.lgap > 0 && !(r.gap > 0)) el('rect', {'class':'phantom', x: x(ts[i]-dt/2), y: m.t, width: Math.max(1, x(ts[i]+dt/2)-x(ts[i]-dt/2)), height: H-m.t-m.b}, gPh); });
+    // grid + axes
+    var gG = el('g', {'class':'grid'}, svg), gA = el('g', {'class':'axis'}, svg);
+    for (var v = ymin; v <= ymax + 1e-9; v += ystep){ el('line', {x1:m.l, x2:W-m.r, y1:y(v), y2:y(v)}, gG); txt(el('text', {x:m.l-8, y:y(v)+4, 'text-anchor':'end'}, svg), v.toFixed(2)); }
+    el('line', {x1:m.l, x2:W-m.r, y1:H-m.b, y2:H-m.b}, gA);
+    var span = t1 - t0, xstep = span > 3*3600e3 ? 1800e3 : span > 5400e3 ? 900e3 : span > 1800e3 ? 600e3 : 300e3;
+    for (var t = Math.ceil(t0/xstep)*xstep; t <= t1; t += xstep){ el('line', {x1:x(t), x2:x(t), y1:H-m.b, y2:H-m.b+5}, gA); txt(el('text', {x:x(t), y:H-m.b+18, 'text-anchor':'middle'}, svg), hhmm(t)); }
+    txt(el('text', {x:W-m.r, y:H-m.b+18, 'text-anchor':'end'}, svg), 'UTC');
+    // lines
+    function path(arr){ var d = ''; arr.forEach(function(v, i){ d += (i ? 'L' : 'M') + x(ts[i]).toFixed(1) + ' ' + y(v).toFixed(1); }); return d; }
+    el('path', {'class':'pline', d: path(pmid)}, svg);
+    el('path', {'class':'kline', d: path(kmid)}, svg);
+    // crossings
+    var gC = el('g', {}, svg);
+    S.forEach(function(r, i){ if (r.gap != null && r.gap > 0) el('circle', {'class': (r.net != null && r.net > 0) ? 'net' : 'cross', cx:x(ts[i]), cy:y(kmid[i]), r: 4.5}, gC); });
+    // end labels only if the series separate at the right edge
+    var kEnd = kmid[kmid.length-1], pEnd = pmid[pmid.length-1];
+    if (Math.abs(kEnd - pEnd) >= 0.015){ txt(el('text', {x:W-m.r+4, y:y(kEnd)+4, 'text-anchor':'start', 'fill':'var(--ink-2)'}, svg), 'K ' + kEnd.toFixed(2)); txt(el('text', {x:W-m.r+4, y:y(pEnd)+4, 'text-anchor':'start', 'fill':'var(--ink-2)'}, svg), 'P ' + pEnd.toFixed(2)); }
+    // hover layer
+    var xh = el('line', {'class':'xhair', y1:m.t, y2:H-m.b}, svg);
+    var hk = el('circle', {'class':'hdot', r:5, fill:'var(--kalshi)'}, svg), hp = el('circle', {'class':'hdot', r:5, fill:'var(--poly)'}, svg);
+    var hit = el('rect', {'class':'hit', x:m.l, y:m.t, width:W-m.l-m.r, height:H-m.t-m.b}, svg);
+    var cur = -1;
+    function show(i, px){
+      cur = i; var r = S[i]; var X = x(ts[i]);
+      xh.setAttribute('x1', X); xh.setAttribute('x2', X); xh.style.opacity = 1;
+      hk.setAttribute('cx', X); hk.setAttribute('cy', y(kmid[i])); hk.style.opacity = 1;
+      hp.setAttribute('cx', X); hp.setAttribute('cy', y(pmid[i])); hp.style.opacity = 1;
+      while (tip.firstChild) tip.removeChild(tip.firstChild);
+      var h = document.createElement('div'); h.className = 't'; h.textContent = hhmmss(ts[i]) + 'Z  ' + (r.ph === 'live' ? 'in game' : r.ph) + (r.st ? '  ·  ' + r.st : ''); tip.appendChild(h);
+      function row(label, color, val, extra){ var d = document.createElement('div'); d.className = 'row'; var s = document.createElement('span'); var k = document.createElement('i'); k.style.borderColor = color; s.appendChild(k); s.appendChild(document.createTextNode(label)); var b = document.createElement('b'); b.textContent = val; d.appendChild(s); d.appendChild(b); tip.appendChild(d); if (extra){ var e = document.createElement('div'); e.className = 'row'; var es = document.createElement('span'); es.style.paddingLeft = '20px'; es.textContent = extra; tip.appendChild(e); e.appendChild(es); } }
+      row('Kalshi book bid / ask', 'var(--kalshi)', fmt3(r.kb) + ' / ' + fmt3(r.ka), r.lb != null ? 'list endpoint ' + fmt3(r.lb) + ' / ' + fmt3(r.la) : null);
+      row('Polymarket bid / ask', 'var(--poly)', fmt3(r.pb) + ' / ' + fmt3(r.pa));
+      var g = document.createElement('div'); g.className = 'gap';
+      g.textContent = 'Best crossing ' + cents(r.gap) + (r.lgap != null ? ' (list endpoint ' + cents(r.lgap) + ')' : '') + (r.net != null && r.net > 0 ? '  ·  net ' + (r.net*100).toFixed(2) + '% after fees' : '');
+      tip.appendChild(g);
+      tip.style.display = 'block';
+      var rect = host.getBoundingClientRect(), card = host.parentNode.getBoundingClientRect();
+      var left = (px != null ? px : rect.left + X/W*rect.width) - card.left + 14; if (left + 260 > card.width) left = left - 288;
+      tip.style.left = left + 'px'; tip.style.top = (rect.top - card.top + 8) + 'px';
+    }
+    function hide(){ xh.style.opacity = 0; hk.style.opacity = 0; hp.style.opacity = 0; tip.style.display = 'none'; cur = -1; }
+    function nearest(clientX){ var rect = svg.getBoundingClientRect(); var vx = (clientX - rect.left)/rect.width*W; var t = t0 + (vx - m.l)/(W-m.l-m.r)*(t1-t0); var lo = 0, hi = ts.length-1; while (lo < hi){ var mid = (lo+hi)>>1; if (ts[mid] < t) lo = mid+1; else hi = mid; } if (lo > 0 && Math.abs(ts[lo-1]-t) < Math.abs(ts[lo]-t)) lo--; return lo; }
+    hit.addEventListener('pointermove', function(e){ show(nearest(e.clientX), e.clientX); });
+    hit.addEventListener('pointerleave', hide);
+    svg.addEventListener('keydown', function(e){ if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); var i = cur < 0 ? (e.key === 'ArrowRight' ? 0 : S.length-1) : Math.max(0, Math.min(S.length-1, cur + (e.key === 'ArrowRight' ? 1 : -1))); show(i); } else if (e.key === 'Escape') hide(); });
+    svg.addEventListener('blur', hide);
+    // table view
+    var tw = document.getElementById('series-table'); var table = document.createElement('table'); var thead = document.createElement('thead'); var trh = document.createElement('tr');
+    ['Time (UTC)','Phase','Game state','Kalshi bid','Kalshi ask','List bid','List ask','Poly bid','Poly ask','Best crossing','Net after fees'].forEach(function(hn, i){ var th = document.createElement('th'); th.textContent = hn; if (i >= 3) th.className = 'n'; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead); var tb = document.createElement('tbody');
+    S.forEach(function(r, i){ var tr = document.createElement('tr'); [hhmmss(ts[i]), r.ph, r.st, fmt3(r.kb), fmt3(r.ka), fmt3(r.lb), fmt3(r.la), fmt3(r.pb), fmt3(r.pa), cents(r.gap), r.net != null && r.net > 0 ? (r.net*100).toFixed(2)+'%' : '-'].forEach(function(v, j){ var td = document.createElement('td'); td.textContent = v; if (j >= 3) td.className = 'n'; tr.appendChild(td); }); tb.appendChild(tr); });
+    table.appendChild(tb); tw.appendChild(table);
+  })();
+
+  /* ---------------- league bars ---------------- */
+  (function(){
+    var B = D.bars, host = document.getElementById('bars');
+    if (!B || !B.length){ host.textContent = 'No scan data.'; return; }
+    var groups = [{k:'major', label:'MAJOR LEAGUES'}, {k:'niche', label:'NICHE LEAGUES'}];
+    var rows = []; groups.forEach(function(g){ var xs = B.filter(function(b){ return b.g === g.k; }).sort(function(a,b){ return b.v - a.v; }); if (xs.length){ rows.push({hdr:g.label}); xs.forEach(function(b){ rows.push(b); }); } });
+    var W = 960, labelW = 190, m = {l:labelW+12, r:70, t:26, b:8}, bh = 14, gap = 8, hdrH = 30;
+    var H = m.t + rows.reduce(function(a, r){ return a + (r.hdr ? hdrH : bh + gap); }, 0) + m.b;
+    var vmax = Math.max.apply(null, B.map(function(b){ return b.v; })); var step = niceStep(vmax, 5); var xmax = Math.ceil(vmax/step)*step;
+    var x = function(v){ return m.l + v/xmax*(W-m.l-m.r); };
+    var svg = el('svg', {viewBox:'0 0 '+W+' '+H, 'class':'chart', role:'img', 'aria-label':'Mean mid-price gap by league'}, host); svg.style.cursor = 'default';
+    var gG = el('g', {'class':'grid'}, svg);
+    for (var v = 0; v <= xmax + 1e-9; v += step){ el('line', {x1:x(v), x2:x(v), y1:m.t-6, y2:H-m.b}, gG); txt(el('text', {x:x(v), y:m.t-10, 'text-anchor':'middle'}, svg), (v*100).toFixed(0) + '¢'); }
+    var tip = document.createElement('div'); tip.className = 'tip'; host.parentNode.appendChild(tip);
+    var yy = m.t;
+    rows.forEach(function(r){
+      if (r.hdr){ txt(el('text', {'class':'grp', x:0, y:yy+18}, svg), r.hdr); yy += hdrH; return; }
+      var w = Math.max(0, x(r.v) - m.l), rr = Math.min(4, w/2);
+      var d = 'M' + m.l + ' ' + yy + ' H' + (m.l + w - rr) + ' a' + rr + ' ' + rr + ' 0 0 1 ' + rr + ' ' + rr + ' V' + (yy + bh - rr) + ' a' + rr + ' ' + rr + ' 0 0 1 -' + rr + ' ' + rr + ' H' + m.l + ' Z';
+      var bar = el('path', {'class':'bar', d:d}, svg);
+      txt(el('text', {x:m.l-10, y:yy+bh-3, 'text-anchor':'end', fill:'var(--ink)'}, svg), r.name);
+      txt(el('text', {'class':'barlabel', x:m.l+w+6, y:yy+bh-3}, svg), (r.v*100).toFixed(1) + '¢');
+      var hit = el('rect', {'class':'hit', x:0, y:yy-gap/2, width:W, height:bh+gap, tabindex:'0', role:'img', 'aria-label': r.name + ' ' + (r.v*100).toFixed(1) + ' cents'}, svg);
+      function on(e){ bar.classList.add('hot'); while (tip.firstChild) tip.removeChild(tip.firstChild); var h = document.createElement('div'); h.className = 't'; h.textContent = r.name + '  ·  ' + r.legs + ' legs'; tip.appendChild(h);
+        [['Mean |mid gap|', (r.v*100).toFixed(1)+'¢'], ['Kalshi spread', (r.ks*100).toFixed(1)+'¢'], ['Polymarket spread', (r.ps*100).toFixed(1)+'¢'], ['Best prices crossed', r.x]].forEach(function(p){ var d2 = document.createElement('div'); d2.className = 'row'; var s = document.createElement('span'); s.textContent = p[0]; var b = document.createElement('b'); b.textContent = p[1]; d2.appendChild(s); d2.appendChild(b); tip.appendChild(d2); });
+        tip.style.display = 'block'; var hr = host.getBoundingClientRect(), cr = host.parentNode.getBoundingClientRect(); var left = (e && e.clientX ? e.clientX - cr.left + 14 : m.l/W*hr.width + hr.left - cr.left + 20); if (left + 260 > cr.width) left -= 288; tip.style.left = left + 'px'; tip.style.top = (hr.top - cr.top + (yy+bh)/H*hr.height + 6) + 'px'; }
+      function off(){ bar.classList.remove('hot'); tip.style.display = 'none'; }
+      hit.addEventListener('pointerenter', on); hit.addEventListener('pointermove', on); hit.addEventListener('pointerleave', off); hit.addEventListener('focus', on); hit.addEventListener('blur', off);
+      yy += bh + gap;
+    });
+  })();
+})();
+</script>

@@ -85,22 +85,31 @@ cp .env.example .env            # optional: add ODDS_API_KEY for multi-book line
 ## Use
 
 ```bash
-arb scan                        # one pass over 13 leagues, paper-trades anything risk-free, prints Vegas gaps
+arb scan                        # one pass over 13 major leagues, paper-trades anything risk-free, prints Vegas gaps
 arb scan --leagues nfl --games  # NFL only, show the matched-games table with all three venues' quotes
+arb scan --leagues niche        # 28 niche leagues (ITF/ATP/WTA tennis, CS2, Dota 2, LoL, KBO, NPB, KHL, 2nd-tier soccer)
 arb scan --scope all            # also crawl every open market and fuzzy-match non-sports events
 arb run --interval 120          # keep scanning; settles open paper trades every 10 scans
-arb vegas --min-edge 0.02       # only the sportsbook comparison, gaps ≥ 2 points
+arb live --leagues mlb,ncaaf --interval 6 --duration 7200   # sample both venues every 6 s during games
+arb live-report                 # pre-game vs in-game decoupling: gaps, phantom crossings, episode lengths
+arb vegas --min-edge 0.02       # only the sportsbook comparison, gaps ≥ 2 points, both de-vig methods
 arb match --scope all --top 30  # inspect matches and fuzzy pair candidates
 arb settle                      # settle paper trades against Kalshi/Polymarket results and ESPN finals
 arb report                      # P&L summary, open/settled trades, last scan's discrepancies
 ```
 
+Findings from the first day of scans, including the in-game and niche-market analysis, are written up in
+[docs/ANALYSIS.md](docs/ANALYSIS.md).
+
 Knobs (`.env` or flags): `PAPER_BANKROLL` (10 000), `PAPER_MAX_PER_TRADE` (500), `PAPER_MAX_PER_KEY`
 (1 000 per game/market), `PAPER_MIN_MARGIN` (0.5 % net), `BOOK_MAX_STAKE` (500, assumed sportsbook
 liquidity per bet). Everything is written to `data/paper.db`.
 
-Leagues: `nfl ncaaf nba wnba ncaab mlb nhl epl laliga bundesliga seriea ligue1 mls ucl`
-(coverage on any given day depends on what each venue has listed).
+Major leagues (ESPN team registry, DraftKings lines): `nfl ncaaf nba wnba ncaab mlb nhl epl laliga bundesliga seriea
+ligue1 mls ucl`. Niche leagues (participants clustered from the venues' own names; some with ESPN lines):
+`itf_m itf_w atp wta cs2 dota2 lol valorant r6 khl npb kbo championship league_one ligamx brasileirao brasileirao_b
+saudi uel eredivisie kleague jleague usl ligue2 liga_portugal egypt serie_b eerste`. Coverage on any given day
+depends on what each venue has listed.
 
 ## What the first scans found (6 Sep 2026)
 

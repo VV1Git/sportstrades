@@ -122,9 +122,12 @@ class LiveSampler:
                 continue
             keep.append(g)
         self.refresh_espn()
-        # cap so a tick stays a few seconds; keep at least a third of the slots for the pre-game control group
-        live = sorted((g for g in keep if self.phase(g, now) == "live"), key=lambda g: g.start or now)
-        pre = sorted((g for g in keep if self.phase(g, now) != "live"), key=lambda g: g.start or now)
+        # cap so a tick stays a few seconds; major leagues first, then keep at least a third of the
+        # slots for the pre-game control group
+        from .config import NICHE_LEAGUES
+        rank = lambda g: (1 if g.league in NICHE_LEAGUES else 0, g.start or now)
+        live = sorted((g for g in keep if self.phase(g, now) == "live"), key=rank)
+        pre = sorted((g for g in keep if self.phase(g, now) != "live"), key=rank)
         n_pre = max(min(len(pre), self.max_games // 3), self.max_games - len(live))
         self.games = live[: self.max_games - n_pre] + pre[:n_pre]
         self._last_match = time.time()
@@ -300,16 +303,59 @@ def episodes(rows: list[dict], key: str, positive=lambda v: v is not None and v 
     return out
 
 
-def analyze(store: Store, session: int | None = None) -> dict:
+def analyze(store: Store, session: int | None = None, sessions: list[int] | None = None) -> dict:
+    """Analyse recorded ticks: one session, a list of sessions, or all."""
     store.db.executescript(TICKS_SCHEMA)
-    q = "SELECT * FROM ticks" + (" WHERE session=?" if session else "") + " ORDER BY ts"
-    rows = [dict(r) for r in store.db.execute(q, ((session,) if session else ())).fetchall()]
+    if session is not None:
+        sessions = [session]
+    if sessions:
+        marks = ",".join("?" * len(sessions))
+        rows = [dict(r) for r in store.db.execute(f"SELECT * FROM ticks WHERE session IN ({marks}) ORDER BY ts", sessions).fetchall()]
+    else:
+        rows = [dict(r) for r in store.db.execute("SELECT * FROM ticks ORDER BY ts").fetchall()]
     sess = [dict(r) for r in store.db.execute("SELECT * FROM live_sessions ORDER BY id").fetchall()]
     interval = None
-    if session:
-        s_row = next((s for s in sess if s["id"] == session), None)
+    if sessions:
+        s_row = next((s for s in sess if s["id"] == sessions[-1]), None)
         interval = s_row["interval_s"] if s_row else None
-    out: dict = {"sessions": sess, "n_ticks": len(rows), "phases": {}, "games": [], "episodes": {}, "top_moments": []}
+    from .config import NICHE_LEAGUES
+    out: dict = {"sessions": sess, "n_ticks": len(rows), "phases": {}, "phases_by_group": {}, "games": [], "episodes": {},
+                 "top_moments": []}
+
+    def _group(r: dict) -> str:
+        return "niche" if r["league"] in NICHE_LEAGUES else "major"
+
+    def _phase_stats(rs: list[dict]) -> dict:
+        absd = [abs(r["mid_diff"]) for r in rs]
+        gaps = [r["gross_gap"] for r in rs if r["gross_gap"] is not None]
+        nets = [r["net_margin"] for r in rs if r["net_margin"] is not None and r["net_margin"] > 0]
+        d = {
+            "samples": len(rs), "games": len({r["match_key"] for r in rs}),
+            "mean_abs_mid_diff": statistics.fmean(absd), "p50_abs_mid_diff": _pct(absd, 0.5),
+            "p90_abs_mid_diff": _pct(absd, 0.9), "p99_abs_mid_diff": _pct(absd, 0.99), "max_abs_mid_diff": max(absd),
+            "pct_gross_gap_positive": 100.0 * sum(1 for g in gaps if g > 0) / len(gaps) if gaps else None,
+            "pct_gross_gap_ge_2c": 100.0 * sum(1 for g in gaps if g >= 0.02) / len(gaps) if gaps else None,
+            "pct_net_arb": 100.0 * len(nets) / len(rs),
+            "mean_net_margin_when_arb": statistics.fmean(nets) if nets else None,
+            "max_net_margin": max(nets) if nets else None,
+            "mean_kalshi_spread": statistics.fmean([r["k_ask"] - r["k_bid"] for r in rs if r["k_ask"] and r["k_bid"]]) or None,
+            "mean_poly_spread": statistics.fmean([r["p_ask"] - r["p_bid"] for r in rs if r["p_ask"] and r["p_bid"]]) or None,
+        }
+        lst = [r for r in rs if r.get("k_list_ask") is not None and r.get("k_list_bid") is not None and r["p_bid"] is not None
+               and r["p_ask"] is not None and r["k_ask"] is not None and r["k_bid"] is not None]
+        if lst:
+            phantom = sum(1 for r in lst if max(r["p_bid"] - r["k_list_ask"], r["k_list_bid"] - r["p_ask"]) > 0
+                          and (r["gross_gap"] is None or r["gross_gap"] <= 0))
+            d["list_vs_book_samples"] = len(lst)
+            d["phantom_gap_pct"] = 100.0 * phantom / len(lst)
+            d["mean_list_book_diff"] = statistics.fmean(abs(r["k_list_ask"] - r["k_ask"]) + abs(r["k_list_bid"] - r["k_bid"]) for r in lst)
+        return d
+
+    for grp in ("major", "niche"):
+        for ph in ("pre", "live"):
+            rs = [r for r in rows if r["phase"] == ph and r["mid_diff"] is not None and _group(r) == grp]
+            if rs:
+                out["phases_by_group"][f"{grp}/{ph}"] = _phase_stats(rs)
     for ph in ("pre", "live", "post", "unknown"):
         rs = [r for r in rows if r["phase"] == ph and r["mid_diff"] is not None]
         if not rs:

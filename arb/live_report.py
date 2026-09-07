@@ -28,6 +28,15 @@ def print_live_analysis(a: dict) -> None:
                   _f(v["pct_net_arb"], "{:.2f}%"), pct(v["mean_net_margin_when_arb"]) if v["mean_net_margin_when_arb"] else "-",
                   _f(v["mean_kalshi_spread"]), _f(v["mean_poly_spread"]))
     console.print(t)
+    if a.get("phases_by_group"):
+        t = Table(title="Same, split by league group (major = ESPN-registry leagues, niche = tennis/esports/2nd-tier)")
+        for c in ("Group / phase", "Samples", "Games", "|mid diff| mean", "p90", "gross gap>0", "net arb", "K spread", "P spread", "phantom (list only)"):
+            t.add_column(c)
+        for k, v in a["phases_by_group"].items():
+            t.add_row(k, str(v["samples"]), str(v["games"]), _f(v["mean_abs_mid_diff"]), _f(v["p90_abs_mid_diff"]),
+                      _f(v["pct_gross_gap_positive"], "{:.1f}%"), _f(v["pct_net_arb"], "{:.2f}%"), _f(v["mean_kalshi_spread"]),
+                      _f(v["mean_poly_spread"]), _f(v.get("phantom_gap_pct"), "{:.1f}%"))
+        console.print(t)
     if any("phantom_gap_pct" in v for v in a["phases"].values()):
         t = Table(title="Kalshi list endpoint vs executable order book")
         for c in ("Phase", "Samples", "mean |list − book| (bid+ask)", "phantom crossings (list only)"):
