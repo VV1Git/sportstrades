@@ -244,12 +244,84 @@ def net_list(a: dict) -> str:
             + rows + "</tbody></table>")
 
 
+# ----------------------------------------------------------------------------- markdown (docs/ANALYSIS.md §3)
+def live_markdown(a: dict, ctx: dict) -> str:
+    g = a["phases_by_group"]
+
+    def row(k: str, label: str) -> str:
+        v = g.get(k)
+        if not v:
+            return ""
+        return (f"| {label} | {v['samples']:,} | {v['games']} | {c(v['mean_abs_mid_diff'])} | {c(v['p90_abs_mid_diff'])} | {c(v['max_abs_mid_diff'], 0)} | "
+                f"{pct(v['pct_gross_gap_positive'])} | {pct(v.get('phantom_gap_pct'))} | {pct(v['pct_net_arb'], 2)} | {c(v['mean_kalshi_spread'])} / {c(v['mean_poly_spread'])} |\n")
+
+    table = ("| Group / phase | Samples | Games | mean \\|mid gap\\| | p90 | max | books cross | phantom (list only) | net arb after fees | spreads K / P |\n"
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
+             + row("major/pre", "Major, before the game") + row("major/live", "Major, in game")
+             + row("niche/pre", "Niche, before the game") + row("niche/live", "Niche, in game"))
+    e = a["episodes"]
+
+    def erow(kind: str, label: str) -> str:
+        out = ""
+        for ph in ("pre", "live"):
+            v = e.get(f"{kind}_{ph}")
+            if v:
+                med = "-" if v["median_seconds"] is None else f"{v['median_seconds']:.0f}"
+                mx = "-" if v["max_seconds"] is None else f"{v['max_seconds']:.0f}"
+                pk = "-" if v["peak"] is None else (c(v["peak"]) if kind == "gross" else f"{v['peak'] * 100:.2f}%")
+                out += f"| {label} | {'in game' if ph == 'live' else 'before the game'} | {v['count']} | {v['single_tick']} | {med} | {mx} | {pk} |\n"
+        return out
+
+    etable = ("| Window | Phase | Episodes | one tick only | median length (s) | longest (s) | peak |\n|---|---|---:|---:|---:|---:|---:|\n"
+              + erow("gross", "best prices cross (before fees)") + erow("net", "profitable after fees and depth"))
+    nets = a["episodes"].get("net_list") or []
+    ntable = ""
+    if nets:
+        ntable = ("\n**Fee-positive windows recorded**\n\n| Outcome | Phase | Start (UTC) | Ticks | Seconds | Peak margin | Game state |\n|---|---|---|---:|---:|---:|---|\n"
+                  + "".join(f"| {x['team_name']} | {x['phase']} | {x['start'][11:19]} | {x['ticks']} | {x['seconds']:.0f} | {x['peak'] * 100:+.2f}% | {x['status'] or ''} |\n" for x in nets[:8]))
+    return f"""**Hypothesis.** The two markets converge over long horizons but come apart in the high-volatility minutes of a live
+game, when each order book is re-priced by different people at different speeds.
+
+**Method.** Both venues were sampled every six seconds for every matched game in progress, with soon-to-start games as
+the control group, over {ctx['LIVE_SPAN']} on 7 September ({ctx['LIVE_TICKS']} venue-pair samples, {ctx['LIVE_GAMES']} games).
+Two Kalshi quotes were recorded at each tick: the *market-list* endpoint (what a scanner naturally polls) and the
+*order-book* endpoint (what an order actually hits). Polymarket's order books were pulled in the same call. "Books
+cross" means the best prices on the two venues overlapped before fees; "phantom" means the list endpoint showed a
+crossing that the executable book did not.
+
+{table}
+**Major leagues in game** ({ctx['LIVE_MAJ_GAMES']} games, {ctx['LIVE_MAJ_SAMPLES']} samples): executable books {ctx['LIVE_MAJ_GAP']} apart on
+average (p90 {ctx['LIVE_MAJ_P90']}), crossing in {ctx['LIVE_MAJ_CROSS']} of samples. The list endpoint disagreed with the book by
+{ctx['LIVE_MAJ_LISTDIFF']} on average during play and produced a phantom crossing in {ctx['LIVE_MAJ_PHANTOM']} of samples. Fee-positive
+windows: {ctx['LIVE_MAJ_NET']}.
+
+**Niche leagues in game**: {ctx['LIVE_NIC_GAP']} apart while live against {ctx['LIVE_NIC_PRE_GAP']} before the start; books crossed in
+{ctx['LIVE_NIC_CROSS']} of live samples against {ctx['LIVE_NIC_PRE_CROSS']} before, and {ctx['LIVE_NIC_NET']} of live samples were fee-positive,
+all on books a few dozen contracts deep.
+
+**How long a window lasts**
+
+{etable}{ntable}
+**The first-inning example.** At 02:11:54Z Polymarket moved the Dodgers from 0.60 to 0.66 in fifteen seconds; Kalshi's
+list endpoint kept showing 0.59/0.61 for another fifty seconds, then jumped to 0.66/0.67. Kalshi's trade tape printed
+zero trades in that window. Nobody took the 0.61 ask, because it was not there. Session 1 of the sampler polled only
+the list endpoint and "saw" the venues cross in 12% of live samples; sessions 3–4 polled the book as well and the real
+figure is the one in the table.
+
+**Reading.** In-game volatility does open gaps that pre-game trading never shows, and the biggest ones are in the
+thinnest books. Against executable prices the gaps are rarer, smaller and shorter than a list-endpoint scanner
+suggests; the fee-positive windows last seconds and sit on a few dozen contracts. The decoupling is real, but it is a
+latency race, not a convergence trade.
+"""
+
+
 # ----------------------------------------------------------------------------- main
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live-sessions", default="3,4")
     ap.add_argument("--series-team", default="Dodgers")
     ap.add_argument("--out", default=str(Path(__file__).with_name("report.html")))
+    ap.add_argument("--update-md", action="store_true", help="fill the live section of docs/ANALYSIS.md")
     args = ap.parse_args()
     s = Settings.from_env()
     store = Store(s.db_path)
@@ -326,6 +398,14 @@ def main() -> None:
     }
     html = Template(TEMPLATE.read_text()).safe_substitute(ctx)
     Path(args.out).write_text(html)
+    if args.update_md:
+        md_path = Path(__file__).with_name("ANALYSIS.md")
+        md = md_path.read_text()
+        md = md.replace("LIVE_SECTION", live_markdown(a, ctx))
+        md = md.replace("`LIVE_BOOK_CROSS_PCT`", ctx["STAT_REAL"]).replace("`LIVE_NET_PCT`", ctx["STAT_NET"])
+        md = md.replace(" *(Filled in from session 3 below.)*", "")
+        md_path.write_text(md)
+        print("updated docs/ANALYSIS.md live section")
     print(f"wrote {args.out} ({len(html) / 1024:.0f} KB); majors scan {maj_id}, niche scan {nic_id}, vegas scan {v.get('scan_id')}, live sessions {sessions}, series points {len(ser)}")
 
 
