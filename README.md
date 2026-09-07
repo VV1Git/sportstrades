@@ -99,7 +99,37 @@ arb settle                      # settle paper trades against Kalshi/Polymarket 
 arb report                      # P&L summary, open/settled trades, last scan's discrepancies
 ```
 
-### Running it all the time
+### Running it in the cloud (recommended)
+
+`.github/workflows/paper-trader.yml` runs the whole loop on GitHub's servers, so it keeps going when your
+laptop sleeps. Every two hours it scans both venues, paper-trades anything profitable after fees, settles
+finished games and publishes the ledger. Nothing to install and no API keys: every endpoint it uses is public.
+
+* **Current P&L**: the [`ledger`](../../tree/ledger) branch — `STATUS.md` renders the summary table, `cloud.db`
+  is the SQLite ledger, `status.json` the machine-readable snapshot.
+* **Run history**: the Actions tab; each run's summary page shows the same table, and attaches the database as
+  a 30-day artifact.
+* **Run it now**: `gh workflow run paper-trader.yml`, or the "Run workflow" button. It takes inputs for the
+  league set and a settle-only mode.
+* **Pull the cloud ledger down**: `git fetch origin ledger && git show FETCH_HEAD:cloud.db > data/cloud.db`,
+  then `PAPER_DB=data/cloud.db arb report`.
+
+State lives on the `ledger` branch as a single force-pushed commit, so the repository never grows a long tail
+of binary history. Scans there run with `--no-quotes --keep-days 14`, which keeps the database under a
+megabyte indefinitely; the per-scan quote snapshots that the research tables use stay local.
+
+**Budget.** A run costs about 3.3 minutes, so the two-hourly default uses roughly 1,200 of the 2,000 free
+monthly Actions minutes on a private repo. Hourly would be about 2,400 and go over. The cron line at the top
+of the workflow is the dial, and the job carries a 15-minute timeout so a hung venue API cannot drain the
+budget. Making the repository public makes Actions minutes unlimited. Two caveats that come with cron on
+shared runners: scheduled jobs can fire ten or more minutes late under load, and GitHub disables scheduled
+workflows on a repository with no pushes for 60 days.
+
+Because in-game arbitrage windows last about six seconds (see the analysis), a two-hourly cloud scan is not
+trying to catch them. What it does is accumulate the ledger and settle games continuously without a machine
+that has to stay awake.
+
+### Running it on your own machine instead
 
 ```bash
 nohup scripts/paper_trader.sh >/dev/null 2>&1 &   # scans every league both venues list, every 60 s, forever
