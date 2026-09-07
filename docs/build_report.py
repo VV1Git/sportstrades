@@ -297,8 +297,9 @@ def backtest_section(paths: list[str]) -> tuple[list[dict], dict]:
         f"<tr><td>{x['league'].upper()}</td><td>{x['game'].split(':')[1]}</td><td>{x['team']}</td><td class=mono>{datetime.fromtimestamp(x['ts'], tz=timezone.utc).strftime('%m-%d %H:%M')}</td>"
         f"<td>{'in game' if x['live'] else 'pre'}</td><td class=n>{x['k_bid']:.2f} / {x['k_ask']:.2f}</td><td class=n>{x['p_mid']:.3f}</td><td class=mono>{x['side']}</td>"
         f"<td class=n>{x['gross'] * 100:+.1f}¢</td><td class=n>{x['net'] * 100:+.2f}%</td></tr>" for x in top[:10])
-    days = max(r["days"] for r in runs)
-    return rows, {"BT_TABLE": table, "BT_DAYS": str(days), "BT_GAMES": str(tot["games"]), "BT_LEGS": str(tot["legs"]),
+    day_set = sorted({r["days"] for r in runs}, reverse=True)
+    days = str(day_set[0]) if len(day_set) == 1 else " / ".join(str(d) for d in day_set) + " (major / niche leagues)"
+    return rows, {"BT_TABLE": table, "BT_DAYS": days, "BT_GAMES": str(tot["games"]), "BT_LEGS": str(tot["legs"]),
                   "BT_MIN_PRE": f"{tot['pre']:,}", "BT_MIN_LIVE": f"{tot['live']:,}",
                   "BT_PROFIT_1M": f"${tot['pp'] + tot['pl']:,.0f}", "BT_PROFIT_PERSIST": f"${tot['qpp'] + tot['qpl']:,.0f}",
                   "BT_SIGNALS_1M": f"{tot['ep'] + tot['el']:,}", "BT_PERSIST": f"{tot['qp'] + tot['ql']:,}", "BT_SIZE": f"{runs[0]['size']:.0f}",
@@ -343,7 +344,7 @@ over {ctx['BT_DAYS']} days at {ctx['BT_SIZE']} contracts a signal, and the signa
 during games, for about a minute at a time, and the money in it is a latency race measured in tens of dollars a day, not
 a convergence trade.
 """
-    summary = (f"Over {ctx['BT_DAYS']} days and {ctx['BT_GAMES']} games, a zero-latency taker acting on every one-minute crossing would have "
+    summary = (f"Over the last {ctx['BT_DAYS']} days and {ctx['BT_GAMES']} games, a zero-latency taker acting on every one-minute crossing would have "
                f"made {ctx['BT_PROFIT_1M']} at {ctx['BT_SIZE']} contracts a signal; signals that lasted a second minute were worth {ctx['BT_PROFIT_PERSIST']}. "
                f"Pre-game minutes crossed in {ctx['BT_GROSS_PRE']} of samples, in-game minutes in {ctx['BT_GROSS_LIVE']}.")
     return section, summary

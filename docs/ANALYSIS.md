@@ -20,7 +20,7 @@
    game markets disagree across venues by 3–10 cents on average, three to six times the major-league gap, but their
    spreads are 20–50 cents wide and the resting size at the best price is a few dozen contracts. The best crossings
    were 2–3 cents, below the fee load, on books that would fill $20–40.
-5. **Replaying the last month minute by minute agrees.** Over 30 days and 3964 games, a zero-latency taker acting on every one-minute crossing would have made $3,778 at 50 contracts a signal; signals that lasted a second minute were worth $682. Pre-game minutes crossed in 6.7% of samples, in-game minutes in 7.2%.
+5. **Replaying the last month minute by minute agrees.** Over the last 30 / 14 (major / niche leagues) days and 3964 games, a zero-latency taker acting on every one-minute crossing would have made $3,778 at 50 contracts a signal; signals that lasted a second minute were worth $682. Pre-game minutes crossed in 6.7% of samples, in-game minutes in 7.2%.
 6. **Matching, not math, is the risk.** Every false arbitrage the scanner ever reported came from matching the wrong
    game (a different day of the same MLB series) or the wrong question ("impeached *and removed*" vs "impeached
    *before his term ends*"). The remedies are exact local-date matching and refusing to auto-trade fuzzy pairs.
@@ -175,7 +175,7 @@ latency race, not a convergence trade.
 
 ## 3b. Historical replay: what the last weeks would have paid
 
-**Method.** For every settled game matched across the venues in the last 30 days (3964 games,
+**Method.** For every settled game matched across the venues in the last 30 / 14 (major / niche leagues) days (3964 games,
 8194 team-legs, 232,833 pre-game and 460,097 in-game minutes) the replay pulls Kalshi's one-minute
 candlesticks (closing YES bid and ask each minute) and Polymarket's per-minute price history for the same team, aligns
 them, and asks at every minute whether YES on one venue plus NO on the other would have cost less than $1 after taker
@@ -231,7 +231,7 @@ Polymarket's trade tape shows a trade within three minutes at a price within a d
 
 **Reading.** Pre-game minutes cross essentially never. In-game minutes cross in 7.2% of samples with the gap
 between midpoints rising from 0.7¢ to 0.9¢; a zero-latency taker would have booked $3,778
-over 30 days at 50 contracts a signal, and the signals that survived a second minute were worth
+over 30 / 14 (major / niche leagues) days at 50 contracts a signal, and the signals that survived a second minute were worth
 $682. The month-long replay says the same thing the one-night sampler said: the venues do come apart
 during games, for about a minute at a time, and the money in it is a latency race measured in tens of dollars a day, not
 a convergence trade.
