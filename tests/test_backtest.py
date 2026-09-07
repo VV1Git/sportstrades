@@ -33,7 +33,9 @@ def test_replay_aligns_polymarket_one_minute_later_and_prices_fees(monkeypatch):
         t = start + i * 60
         # true price during minute i: 0.505 before the play (i < 2), 0.405 after
         hist.append((t, 0.505 if i <= 2 else 0.405))  # stamp at start of minute i holds price at start of i
-    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist))
+    # a trade every minute at the true price, so every minute qualifies
+    trades = [(t + 30, p, 10.0) for t, p in hist]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist, trades))
     g = _game(start)
     r = bt.replay_leg("mlb", g, "1")
     assert r is not None
@@ -46,10 +48,32 @@ def test_replay_aligns_polymarket_one_minute_later_and_prices_fees(monkeypatch):
     hist_lagged = [(t, p) for t, p in hist]
     hist_lagged[8] = (hist_lagged[8][0], 0.505)  # stamp for minute +2 (start of minute) still at old level
     hist_lagged[9] = (hist_lagged[9][0], 0.505)  # and the next one too -> aligned point for candle +2 is stale
-    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist_lagged))
+    trades_lagged = [(t + 30, p, 10.0) for t, p in hist_lagged]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist_lagged, trades_lagged))
     r2 = bt.replay_leg("mlb", g, "1")
     assert r2.gross_live >= 1  # stale Polymarket point vs fresh Kalshi close reads as a crossing
     assert r2.persist_live == 0 or r2.persist_live <= r2.episodes_live
+
+
+def test_minutes_without_polymarket_trades_or_with_empty_book_mid_are_skipped(monkeypatch):
+    s = Settings(max_workers=1)
+    bt = Backtester(s, ["mlb"], days=1, poly_spread=0.02, size=100, quiet=True)
+    start = 1_800_000_000 - (1_800_000_000 % 60)
+    # Kalshi says the game is decided (0.98/0.99); Polymarket's history reports 0.50 (empty book), no trades
+    candles = [{"ts": start + (i + 1) * 60, "bid": 0.98, "ask": 0.99, "volume": 1.0, "price": 0.99} for i in range(0, 12)]
+    hist = [(start + i * 60, 0.5) for i in range(0, 14)]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist, []))
+    r = bt.replay_leg("mlb", _game(start), "1")
+    assert r.candle_minutes == 12 and r.minutes == 0 and r.gross_live == 0  # nothing counted: no tape
+    # with trades at 0.985 but a history feed stuck at 0.50 the minutes are still skipped (feed disagrees with tape)
+    trades = [(start + i * 60 + 20, 0.985, 5.0) for i in range(0, 13)]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist, trades))
+    r = bt.replay_leg("mlb", _game(start), "1")
+    assert r.minutes == 0
+    hist_ok = [(start + i * 60, 0.985) for i in range(0, 14)]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist_ok, trades))
+    r = bt.replay_leg("mlb", _game(start), "1")
+    assert r.minutes == 12 and r.gross_live == 0
 
 
 def test_replay_prices_a_real_crossing_after_fees(monkeypatch):
@@ -59,7 +83,8 @@ def test_replay_prices_a_real_crossing_after_fees(monkeypatch):
     candles = [{"ts": start + (i + 1) * 60, "bid": 0.40, "ask": 0.41, "volume": 1.0, "price": 0.41} for i in range(0, 12)]
     # Polymarket at 0.47 mid (bid 0.46): YES@K 0.41 + NO@P 0.54 = 0.95 gross -> positive after ~2.3c fees
     hist = [(start + i * 60, 0.47) for i in range(0, 14)]
-    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist))
+    trades = [(t + 30, 0.47, 20.0) for t, _ in hist]
+    monkeypatch.setattr(bt, "leg_series", lambda lg, g, team: (candles, hist, trades))
     r = bt.replay_leg("mlb", _game(start), "1")
     assert r.gross_live == 12 and r.net_live == 12
     assert r.episodes_live == 1  # one episode of four consecutive minutes -> one trade

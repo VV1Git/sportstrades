@@ -6,11 +6,14 @@ and Polymarket's per-minute price history for the same team, align them by
 minute, and ask at each minute whether buying YES on one venue and NO on the
 other would have cost less than $1 after taker fees.
 
-Polymarket's history is a mid/last price, not a quote, so a spread is assumed
-(`--poly-spread`, default 2 cents, i.e. the mid plus or minus one cent). Fills
-are assumed at a fixed size (`--size`) whenever a signal appears, one trade per
-episode of consecutive signal minutes. The result is an upper bound on what a
-latency-free taker could have made, split into pre-game and in-game minutes.
+Polymarket's history is a mid price, not a quote, and an empty book reports a
+mid of 0.50, so a minute only counts when Polymarket actually *traded* in that
+minute or the one before; the last trade price stands in for the executable
+price, with a spread assumed around it (`--poly-spread`, default 2 cents).
+Fills are assumed at a fixed size (`--size`) whenever a signal appears, one
+trade per episode of consecutive signal minutes. The result is an upper bound
+on what a latency-free taker could have made, split into pre-game and in-game
+minutes; signals that persist a second minute are counted separately.
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ class LegResult:
     start_ts: int
     minutes: int = 0
     live_minutes: int = 0
+    candle_minutes: int = 0  # Kalshi minutes seen, before requiring a Polymarket trade
     gross_pre: int = 0
     gross_live: int = 0
     net_pre: int = 0
@@ -118,19 +122,22 @@ class Backtester:
         self.log(f"{league}: {len(kms)} settled Kalshi markets, {len(p_events)} closed Polymarket events -> {len(games)} matched games")
         return games[-self.max_games:] if self.max_games else games
 
-    def leg_series(self, league: str, g: Game, team: str) -> tuple[list[dict], list[tuple[int, float]]]:
+    def leg_series(self, league: str, g: Game, team: str) -> tuple[list[dict], list[tuple[int, float]], list[tuple[int, float, float]]]:
+        """Kalshi minute candles, Polymarket history points and Polymarket trades (ts, price, size) for one leg."""
         k, p = g.kalshi[team], g.polymarket[team]
         start = int(g.start.timestamp())
         t0, t1 = start - int(self.pre_hours * 3600), start + int(self.post_hours * 3600)
         kc = self._cached(f"k_{k.id}_{t0}_{t1}", lambda: self.kalshi.candles(LEAGUES[league].kalshi_series, k.id, t0, t1, 1))
         ph = self._cached(f"p_{p.id[:24]}_{t0}_{t1}", lambda: self.poly.price_history(p.id, t0, t1, 1))
-        return kc, [(int(t), float(v)) for t, v in ph]
+        tr = self._cached(f"t_{p.market_id[:24]}_{t0}_{t1}", lambda: self.poly.trades(p.market_id, t0, t1))
+        mine = [(int(ts), float(px), float(sz)) for ts, tok, px, sz in tr if str(tok) == p.id]
+        return kc, [(int(t), float(v)) for t, v in ph], mine
 
     # ------------------------------------------------------------------ replay
     def replay_leg(self, league: str, g: Game, team: str) -> LegResult | None:
         k, p = g.kalshi[team], g.polymarket[team]
         try:
-            kc, ph = self.leg_series(league, g, team)
+            kc, ph, trades = self.leg_series(league, g, team)
         except Exception as e:
             self.log(f"[yellow]{g.key} {team}: {e}")
             return None
@@ -138,10 +145,16 @@ class Backtester:
             return None
         start = int(g.start.timestamp())
         res = LegResult(league, g.key, g.team_name(team), k.id, p.id, start)
-        # Polymarket mid per minute (last point in each minute), forward-filled
+        # Polymarket history point per minute (stamped at the start of the minute)
         pmin: dict[int, float] = {}
         for t, v in ph:
             pmin[t // 60] = v
+        # last trade price and traded size per minute
+        tmin: dict[int, tuple[float, float]] = {}
+        for ts, px, sz in sorted(trades):
+            mnt = ts // 60
+            prev = tmin.get(mnt)
+            tmin[mnt] = (px, (prev[1] if prev else 0.0) + sz)
         rate_k, rate_p = k.fee_rate, p.fee_rate
         run_pre = run_live = False
         len_pre = len_live = 0
@@ -153,11 +166,19 @@ class Backtester:
             # Polymarket's history point stamped at minute m holds the price at the *start* of m;
             # the value as of the end of candle minute m is therefore the point stamped m+1.
             # (Verified against trade prints: Kalshi's 20:03 close matched Polymarket's 20:04 point.)
+            res.candle_minutes += 1
+            # Price: Polymarket's history point stamped m+1 = the price at the end of candle minute m
+            # (verified against trade prints; the point stamped m holds the start-of-minute price).
             pm = pmin.get(m + 1)
             if pm is None:
                 pm = pmin.get(m)
-            if pm is None:
+            # Validity: the market must actually be trading. An empty Polymarket book reports a mid of
+            # 0.50 and a one-sided book reports nonsense, so require a trade within the last 3 minutes
+            # whose price is within a dime of the history point.
+            tr = tmin.get(m) or tmin.get(m - 1) or tmin.get(m - 2)
+            if pm is None or tr is None or abs(tr[0] - pm) > 0.10:
                 run_pre = run_live = False
+                len_pre = len_live = 0
                 continue
             if pm <= 0.005 or pm >= 0.995:
                 run_pre = run_live = False
@@ -200,7 +221,7 @@ class Backtester:
                         res.episodes_pre += 1
                         res.profit_pre += profit
                     res.signals.append({"ts": c["ts"], "live": live, "net": net, "gross": gross, "k_bid": c["bid"], "k_ask": c["ask"], "p_mid": pm,
-                                        "side": "YES@K+NO@P" if net_a >= net_b else "YES@P+NO@K"})
+                                        "p_traded": tr[1], "side": "YES@K+NO@P" if net_a >= net_b else "YES@P+NO@K"})
                 if net > res.best_margin:
                     res.best_margin, res.best_minute = net, c["ts"]
                 if live:
@@ -250,6 +271,7 @@ class Backtester:
             pre = mins - live
             return {
                 "legs": len(rs), "games": len({r.game_key for r in rs}), "minutes": mins, "pre_minutes": pre, "live_minutes": live,
+                "candle_minutes": sum(r.candle_minutes for r in rs),
                 "mean_mid_gap": (sum(r.mid_gap_sum for r in rs) / mins) if mins else None,
                 "mean_mid_gap_live": (sum(r.mid_gap_live_sum for r in rs) / live) if live else None,
                 "mean_mid_gap_pre": ((sum(r.mid_gap_sum for r in rs) - sum(r.mid_gap_live_sum for r in rs)) / pre) if pre else None,

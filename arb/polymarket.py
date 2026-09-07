@@ -304,6 +304,31 @@ class Polymarket:
                 offset += 100
         return list(out.values())
 
+    def trades(self, condition_id: str, start_ts: int, end_ts: int, max_pages: int = 24) -> list[tuple[int, str, float, float]]:
+        """Executed trades for a market from the public data API, newest first,
+        paged back until `start_ts`. Returns (timestamp, token_id, price, size)."""
+        out: list[tuple[int, str, float, float]] = []
+        for page in range(max_pages):
+            try:
+                d = self.clob.request("GET", "https://data-api.polymarket.com/trades",
+                                      params={"market": condition_id, "limit": 500, "offset": page * 500})
+            except httpx.HTTPError:
+                break
+            if not d:
+                break
+            oldest = None
+            for t in d:
+                try:
+                    ts, price, size = int(t["timestamp"]), float(t["price"]), float(t["size"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                oldest = ts if oldest is None else min(oldest, ts)
+                if start_ts <= ts <= end_ts:
+                    out.append((ts, str(t.get("asset")), price, size))
+            if len(d) < 500 or (oldest is not None and oldest < start_ts):
+                break
+        return out
+
     def price_history(self, token_id: str, start_ts: int, end_ts: int, fidelity: int = 1) -> list[tuple[int, float]]:
         """Historical (roughly per-minute) price points for one token."""
         d = self.clob.get("prices-history", {"market": token_id, "startTs": start_ts, "endTs": end_ts, "fidelity": fidelity})
