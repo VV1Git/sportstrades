@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import Leg, Opportunity
@@ -147,6 +147,24 @@ class Store:
     def discrepancies_for_scan(self, scan_id: int) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM discrepancies WHERE scan_id=? ORDER BY ABS(COALESCE(edge_buy,0)) DESC",
                                (scan_id,)).fetchall()
+
+    def prune(self, keep_days: float) -> dict[str, int]:
+        """Drop per-scan research rows older than `keep_days`. Trades, scans and
+        opportunities are the ledger and are never pruned."""
+        if keep_days <= 0:
+            return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat(timespec="seconds")
+        out = {}
+        for table in ("quotes", "discrepancies", "ticks"):
+            try:
+                cur = self.db.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))
+                out[table] = cur.rowcount
+            except sqlite3.OperationalError:
+                continue
+        self.db.commit()
+        if any(out.values()):
+            self.db.execute("VACUUM")
+        return out
 
     # -- summary ----------------------------------------------------------
     def summary(self) -> dict:

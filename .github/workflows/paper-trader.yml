@@ -1,0 +1,116 @@
+# Cloud paper trader.
+#
+# Runs the scanner on GitHub's servers so it keeps going when your laptop sleeps.
+# Each run: scan both venues -> paper-trade anything profitable after fees ->
+# settle finished games -> publish the ledger.
+#
+# State lives on the orphan branch `ledger`, force-pushed as a single commit each
+# run, so the repository never grows with binary history. The same database is
+# also uploaded as a build artifact each run, which gives you 30 days of rollback.
+#
+# Actions budget (free plan on a private repo is 2,000 minutes/month):
+#   a 13-league scan takes ~90 s, so a run costs ~3 minutes with setup.
+#   every 2 hours = 12 runs/day = ~1,080 min/month   <- the default, fits with room
+#   every hour    = 24 runs/day = ~2,160 min/month   <- over the free budget
+# Change the cron below to trade frequency for budget. Making the repository
+# public makes Actions minutes free and unlimited.
+
+name: paper trader
+
+on:
+  schedule:
+    # 17 minutes past every second hour: off the top of the hour, where GitHub's
+    # shared scheduler is most congested and cron fires late.
+    - cron: '17 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      leagues:
+        description: 'League set: all (13 majors), niche, everything, or a comma list'
+        default: 'all'
+        type: string
+      settle_only:
+        description: 'Only settle finished games, do not scan'
+        default: false
+        type: boolean
+
+concurrency:
+  group: paper-trader        # never let two runs write the ledger at once
+  cancel-in-progress: false
+
+permissions:
+  contents: write            # to push the ledger branch
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15      # hard cap: a hung venue API cannot burn the budget
+    env:
+      PAPER_DB: ${{ github.workspace }}/data/cloud.db
+      PAPER_BANKROLL: '10000'
+      PAPER_MAX_PER_TRADE: '500'
+      PAPER_MAX_PER_KEY: '1000'
+      PAPER_MIN_MARGIN: '0.005'
+      KALSHI_RATE: '4'       # gentler than local: shared runners get rate-limited harder
+      CLOB_RATE: '6'
+      LEAGUES: ${{ inputs.leagues || 'all' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: pip install -q -e .
+
+      - name: Restore ledger
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin ledger 2>/dev/null; then
+            git show FETCH_HEAD:cloud.db > data/cloud.db
+            echo "restored ledger: $(du -h data/cloud.db | cut -f1)"
+          else
+            echo "no ledger branch yet, starting a fresh one"
+          fi
+
+      - name: Scan and paper-trade
+        if: ${{ inputs.settle_only != true }}
+        run: |
+          arb run --leagues "$LEAGUES" --max-scans 1 --interval 1 \
+                  --settle-every 999 --no-quotes --keep-days 14 \
+                  --status-file data/status.json
+
+      - name: Settle finished games
+        run: arb settle
+
+      - name: Build ledger summary
+        run: |
+          arb report --markdown ledger/STATUS.md
+          cat ledger/STATUS.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish ledger
+        run: |
+          work="$(mktemp -d)"
+          cp data/cloud.db "$work/cloud.db"
+          cp ledger/STATUS.md "$work/STATUS.md"
+          [ -f data/status.json ] && cp data/status.json "$work/status.json"
+          cd "$work"
+          git init -q -b ledger
+          git config user.name  'sportstrades bot'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -q -m "ledger $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          git push -q --force \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ledger
+          echo "ledger published: $(du -h cloud.db | cut -f1)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ledger-${{ github.run_number }}
+          path: |
+            data/cloud.db
+            data/status.json
+            ledger/STATUS.md
+          retention-days: 30

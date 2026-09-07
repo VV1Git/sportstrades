@@ -131,7 +131,8 @@ def cmd_run(args) -> None:
         settled = None
         try:
             sc = Scanner(s, leagues, scope=args.scope, paper=not args.no_paper, quiet=True,
-                         general_min_score=args.general_threshold, include_live=args.include_live)
+                         general_min_score=args.general_threshold, include_live=args.include_live,
+                         record_quotes=not args.no_quotes)
             res = sc.run()
             console.rule(f"scan {n} (#{res.scan_id}) {time.strftime('%H:%M:%S')}")
             _print_scan(res, args, show_games=False, show_vegas=args.verbose)
@@ -139,6 +140,8 @@ def cmd_run(args) -> None:
                 settled = Settler(sc.store, sc.kalshi, sc.poly, sc.espn).run(verbose=False)
                 if settled["settled"]:
                     console.print(f"[cyan]settled {settled['settled']} trades, P&L {settled['pnl']:+,.2f}")
+            if args.keep_days:
+                sc.store.prune(args.keep_days)
             if args.status_file:
                 _write_status(sc.store, args.status_file, res, res.taken, settled, n)
         except KeyboardInterrupt:
@@ -279,9 +282,55 @@ def cmd_settle(args) -> None:
     console.print(report.summary_table(store))
 
 
+def _markdown_report(store: Store, s, title: str = "Paper-trading ledger") -> str:
+    from datetime import datetime, timezone
+    d = store.summary()
+    last = store.last_scan()
+    total = d["realized_pnl"] + d["expected_open_profit"]
+    cash = s.bankroll - d["deployed"] + d["realized_pnl"]
+    lines = [f"# {title}", ""]
+    lines.append(f"_Updated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
+                 f"{d['scans']} scans · {d['opportunities']} opportunities seen_")
+    lines += ["", "| | |", "|---|---:|",
+              f"| **Simulated profit** | **${total:,.2f}** |",
+              f"| Realized, settled games | ${d['realized_pnl']:,.2f} |",
+              f"| Locked in, open hedges | ${d['expected_open_profit']:,.2f} |",
+              f"| Capital deployed | ${d['deployed']:,.2f} |",
+              f"| Cash available | ${cash:,.2f} of ${s.bankroll:,.0f} |",
+              f"| Open trades | {d['trades_open']} |",
+              f"| Settled trades | {d['trades_settled']} ({d['settled_wins']} profitable) |"]
+    if last:
+        lines.append(f"| Last scan | #{last['id']} · {last['n_games'] or 0} games · {last['n_opps'] or 0} opportunities |")
+    by = d.get("by_kind") or {}
+    if by:
+        lines += ["", "## Opportunities by kind", "", "| Kind | Count | Mean margin | Sum profit |", "|---|---:|---:|---:|"]
+        for k, v in sorted(by.items()):
+            lines.append(f"| {k} | {v['count']} | {(v['avg_margin'] or 0) * 100:+.2f}% | ${v['total_profit'] or 0:,.2f} |")
+    rows = store.trades(limit=12)
+    if rows:
+        lines += ["", "## Most recent trades", "", "| # | Time (UTC) | Kind | Status | Qty | Cost | P&L | Description |", "|---|---|---|---|---:|---:|---:|---|"]
+        for r in rows:
+            pnl = f"${r['pnl']:+,.2f}" if r["pnl"] is not None else f"(exp ${r['payout_if_complete'] - r['cost']:+,.2f})"
+            desc = (r["description"] or "").replace("|", "/")[:90]
+            lines.append(f"| {r['id']} | {r['ts'][:16].replace('T', ' ')} | {r['kind']} | {r['status']} | {r['qty']:.0f} | ${r['cost']:,.2f} | {pnl} | {desc} |")
+    lines += ["", "---", "",
+              "Simulated only: no orders are placed on any venue. "
+              "`Locked in` is the profit already guaranteed by open hedges if every leg settles as priced.", ""]
+    return "\n".join(lines)
+
+
 def cmd_report(args) -> None:
     s = _settings(args)
     store = Store(s.db_path)
+    if args.markdown:
+        md = _markdown_report(store, s)
+        if args.markdown != "-":
+            Path(args.markdown).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.markdown).write_text(md)
+            console.print(f"wrote {args.markdown}")
+        else:
+            print(md)
+        return
     if args.json:
         print(json.dumps(store.summary(), indent=1, default=str))
         return
@@ -329,6 +378,8 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--settle-every", type=int, default=10, help="run settlement every N scans")
     sp.add_argument("--no-paper", action="store_true")
     sp.add_argument("--status-file", default="data/status.json", help="JSON snapshot rewritten after every scan ('' to disable)")
+    sp.add_argument("--no-quotes", action="store_true", help="do not store per-scan quote snapshots (keeps a long-running ledger small)")
+    sp.add_argument("--keep-days", type=float, default=0.0, help="prune quotes/discrepancies/ticks older than N days after each scan")
     sp.set_defaults(fn=cmd_run)
 
     sp = sub.add_parser("vegas", help="sportsbook vs Kalshi/Polymarket comparison")
@@ -368,6 +419,8 @@ def main(argv: list[str] | None = None) -> None:
 
     sp = sub.add_parser("report", help="paper-trading P&L report")
     common(sp, scope=False)
+    sp.add_argument("--markdown", nargs="?", const="-", default=None,
+                    help="write a GitHub-flavored markdown summary to this path ('-' for stdout)")
     sp.set_defaults(fn=cmd_report)
 
     args = p.parse_args(argv)

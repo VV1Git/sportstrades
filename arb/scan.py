@@ -39,9 +39,10 @@ class ScanResult:
 class Scanner:
     def __init__(self, settings: Settings, leagues: list[str], scope: str = "sports", paper: bool = True,
                  store: Store | None = None, quiet: bool = False, general_min_score: float | None = None,
-                 include_live: bool = False):
+                 include_live: bool = False, record_quotes: bool = True):
         self.s = settings
         self.include_live = include_live
+        self.record_quotes = record_quotes
         self.leagues = [l for l in leagues if l in LEAGUES]
         self.scope = scope
         self.paper = paper
@@ -234,7 +235,7 @@ class Scanner:
             for venue, legs in ((KALSHI, g.kalshi), (POLYMARKET, g.polymarket)):
                 for team, o in legs.items():
                     quotes.append((g.key, g.league, team, venue, o.id, o.yes_bid, o.yes_ask, o.yes_bid_size, o.yes_ask_size))
-        if quotes:
+        if quotes and self.record_quotes:
             self.store.add_quotes(scan_id, quotes)
         if discs:
             self.store.add_discrepancies(scan_id, [d.as_dict() for d in discs])
