@@ -99,12 +99,19 @@ arb settle                      # settle paper trades against Kalshi/Polymarket 
 arb report                      # P&L summary, open/settled trades, last scan's discrepancies
 ```
 
+## Live dashboard
+
+**[vv1git.github.io/sportstrades](https://vv1git.github.io/sportstrades/)** — simulated P&L, the cumulative
+profit curve, every open and settled hedge, and the per-scan opportunity feed. Rebuilt from the ledger and
+redeployed on every run, and the page reloads itself every five minutes.
+
 ### Running it in the cloud (recommended)
 
 `.github/workflows/paper-trader.yml` runs the whole loop on GitHub's servers, so it keeps going when your
 laptop sleeps. Every two hours it scans both venues, paper-trades anything profitable after fees, settles
 finished games and publishes the ledger. Nothing to install and no API keys: every endpoint it uses is public.
 
+* **Dashboard**: <https://vv1git.github.io/sportstrades/>, rebuilt by `docs/build_dashboard.py` each run.
 * **Current P&L**: the [`ledger`](../../tree/ledger) branch — `STATUS.md` renders the summary table, `cloud.db`
   is the SQLite ledger, `status.json` the machine-readable snapshot.
 * **Run history**: the Actions tab; each run's summary page shows the same table, and attaches the database as
@@ -118,16 +125,18 @@ State lives on the `ledger` branch as a single force-pushed commit, so the repos
 of binary history. Scans there run with `--no-quotes --keep-days 14`, which keeps the database under a
 megabyte indefinitely; the per-scan quote snapshots that the research tables use stay local.
 
-**Budget.** A run costs about 3.3 minutes, so the two-hourly default uses roughly 1,200 of the 2,000 free
-monthly Actions minutes on a private repo. Hourly would be about 2,400 and go over. The cron line at the top
-of the workflow is the dial, and the job carries a 15-minute timeout so a hung venue API cannot drain the
-budget. Making the repository public makes Actions minutes unlimited. Two caveats that come with cron on
-shared runners: scheduled jobs can fire ten or more minutes late under load, and GitHub disables scheduled
-workflows on a repository with no pushes for 60 days.
+**Frequency.** The repository is public, so Actions minutes are free and unlimited and the limit is GitHub's
+scheduler rather than a budget. The default is every 10 minutes; 5 is the documented cron floor, and scheduled
+jobs on shared runners are routinely delayed under load, so 10 is the useful practical setting. A run takes
+about 3.3 minutes. The cron line at the top of the workflow is the dial.
 
-Because in-game arbitrage windows last about six seconds (see the analysis), a two-hourly cloud scan is not
-trying to catch them. What it does is accumulate the ledger and settle games continuously without a machine
-that has to stay awake.
+Faster has sharply diminishing returns. In-game pricing gaps last about six seconds (see the analysis) and a
+scan itself takes minutes, so no reachable cron frequency catches them. What frequency actually buys is more
+independent samples of the market and quicker settlement. If you want something genuinely continuous, that
+needs a small always-on server rather than a CI scheduler.
+
+Two caveats that come with cron on shared runners: scheduled jobs can fire late under load, and GitHub
+disables scheduled workflows on a repository with no pushes for 60 days.
 
 ### Running it on your own machine instead
 
