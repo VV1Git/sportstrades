@@ -191,6 +191,27 @@ code{font-family:var(--mono);font-size:.92em}
   <div class="tablewrap">$NET_LIST</div>
 </section>
 
+<section id="replay">
+  <span class="eyebrow">Replay</span>
+  <h2>What the last $BT_DAYS days would have paid</h2>
+  <div class="prose">
+  <p class="lede">Live sampling covers one night. To ask the same question over weeks, the scanner replays settled games from both venues' own history: Kalshi's one-minute candlesticks (closing YES bid and ask each minute) and Polymarket's per-minute price history for the same team, $BT_GAMES matched games and $BT_LEGS team-legs, $BT_MIN_PRE pre-game and $BT_MIN_LIVE in-game minutes.</p>
+  <p>At every minute the replay asks whether YES on one venue plus NO on the other would have cost less than $1 after taker fees, with Polymarket's spread assumed at $BT_SPREAD¢ around its recorded price. Two figures come out. <b>Zero-latency taker:</b> fill $BT_SIZE contracts on every one-minute signal the instant it appears, an upper bound that also inherits any timing noise in minute data. <b>Persistent:</b> only signals still there a full minute later, roughly what a person watching two screens could act on.</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="v">$BT_PROFIT_1M</span><span class="l">Zero-latency taker, $BT_SIGNALS_1M one-minute signals at $BT_SIZE contracts each, $BT_DAYS days.</span></div>
+    <div class="stat"><span class="v">$BT_PROFIT_PERSIST</span><span class="l">Signals that persisted a second minute: $BT_PERSIST of them.</span></div>
+    <div class="stat"><span class="v">$BT_GAP_PRE → $BT_GAP_LIVE</span><span class="l">Mean gap between the venues' midpoints, pre-game → in-game.</span></div>
+    <div class="stat"><span class="v">$BT_GROSS_PRE → $BT_GROSS_LIVE</span><span class="l">Minutes where the best prices crossed before fees, pre-game → in-game.</span></div>
+  </div>
+  <div class="tablewrap">$BT_TABLE</div>
+  <h3>Largest one-minute signals</h3>
+  <div class="tablewrap"><table><thead><tr><th>League</th><th>Game</th><th>Team</th><th>When (UTC)</th><th>Phase</th><th class=n>Kalshi bid / ask</th><th class=n>Poly price</th><th>Side</th><th class=n>Gross</th><th class=n>Net</th></tr></thead><tbody>$BT_TOP</tbody></table></div>
+  <div class="prose">
+  <p class="muted">Alignment matters: Polymarket's history point stamped at minute <em>m</em> holds the price at the start of <em>m</em>, Kalshi's candle holds the close. Read naively, every sharp in-game move looks like a 20-cent arbitrage for one minute; the first replay "found" $343 in six games that way. Shifted by one minute and checked against both venues' trade prints, the same six games show $5. The table uses the corrected alignment.</p>
+  </div>
+</section>
+
 <section id="niche">
   <span class="eyebrow">Niche</span>
   <h2>Smaller markets, bigger gaps, no size</h2>

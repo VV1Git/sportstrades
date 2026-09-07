@@ -163,7 +163,7 @@ class Backtester:
                 run_pre = run_live = False
                 len_pre = len_live = 0
                 continue
-            live = c["ts"] >= start
+            live = c["ts"] - 60 >= start  # the whole candle minute falls after the scheduled start
             res.minutes += 1
             if live:
                 res.live_minutes += 1

@@ -244,6 +244,69 @@ def net_list(a: dict) -> str:
             + rows + "</tbody></table>")
 
 
+# ----------------------------------------------------------------------------- historical replay
+def backtest_section(paths: list[str]) -> tuple[list[dict], dict]:
+    """Render `arb backtest --json` output(s) into the report's replay section."""
+    runs = []
+    for pth in paths:
+        try:
+            runs.append(json.loads(Path(pth).read_text()))
+        except (OSError, ValueError):
+            continue
+    if not runs:
+        return [], {"BT_TABLE": "<p class=muted>No historical replay has been run yet (<code>arb backtest --json</code>).</p>",
+                    "BT_DAYS": "-", "BT_GAMES": "0", "BT_LEGS": "0", "BT_MIN_PRE": "0", "BT_MIN_LIVE": "0", "BT_PROFIT_1M": "$0",
+                    "BT_PROFIT_PERSIST": "$0", "BT_SIGNALS_1M": "0", "BT_PERSIST": "0", "BT_SIZE": "50", "BT_TOP": "",
+                    "BT_GROSS_PRE": "-", "BT_GROSS_LIVE": "-", "BT_GAP_PRE": "-", "BT_GAP_LIVE": "-", "BT_SPREAD": "2"}
+    rows = []
+    tot = {"games": 0, "legs": 0, "pre": 0, "live": 0, "gp": 0, "gl": 0, "ep": 0, "el": 0, "pp": 0.0, "pl": 0.0, "qp": 0, "ql": 0,
+           "qpp": 0.0, "qpl": 0.0, "gap_pre_w": 0.0, "gap_live_w": 0.0}
+    top = []
+    for run in runs:
+        for lg, a in run["by_league"].items():
+            rows.append({"name": LEAGUES[lg].name if lg in LEAGUES else lg, "a": a})
+            tot["games"] += a["games"]; tot["legs"] += a["legs"]; tot["pre"] += a["pre_minutes"]; tot["live"] += a["live_minutes"]
+            tot["gp"] += round((a["gross_pct_pre"] or 0) / 100 * a["pre_minutes"]); tot["gl"] += round((a["gross_pct_live"] or 0) / 100 * a["live_minutes"])
+            tot["ep"] += a["episodes_pre"]; tot["el"] += a["episodes_live"]; tot["pp"] += a["profit_pre"]; tot["pl"] += a["profit_live"]
+            tot["qp"] += a["persist_pre"]; tot["ql"] += a["persist_live"]; tot["qpp"] += a["persist_profit_pre"]; tot["qpl"] += a["persist_profit_live"]
+            tot["gap_pre_w"] += (a["mean_mid_gap_pre"] or 0) * a["pre_minutes"]; tot["gap_live_w"] += (a["mean_mid_gap_live"] or 0) * a["live_minutes"]
+        top += run.get("top_signals", [])
+    rows.sort(key=lambda r: -r["a"]["live_minutes"])
+
+    def f(x, fmt="{:.1f}"):
+        return "-" if x is None else fmt.format(x)
+
+    body = "".join(
+        f"<tr><td>{r['name']}</td><td class=n>{r['a']['games']}</td><td class=n>{r['a']['pre_minutes']:,} / {r['a']['live_minutes']:,}</td>"
+        f"<td class=n>{c(r['a']['mean_mid_gap_pre'])} / {c(r['a']['mean_mid_gap_live'])}</td>"
+        f"<td class=n>{f(r['a']['gross_pct_pre'])}% / {f(r['a']['gross_pct_live'])}%</td>"
+        f"<td class=n>{r['a']['episodes_pre']} / {r['a']['episodes_live']}</td><td class=n>${r['a']['profit_pre']:,.0f} / ${r['a']['profit_live']:,.0f}</td>"
+        f"<td class=n>{r['a']['persist_pre']} / {r['a']['persist_live']}</td><td class=n>${r['a']['persist_profit_pre']:,.0f} / ${r['a']['persist_profit_live']:,.0f}</td></tr>"
+        for r in rows)
+    gap_pre = tot["gap_pre_w"] / tot["pre"] if tot["pre"] else None
+    gap_live = tot["gap_live_w"] / tot["live"] if tot["live"] else None
+    foot = (f"<tr class=total><td>All ({tot['legs']} legs)</td><td class=n>{tot['games']}</td><td class=n>{tot['pre']:,} / {tot['live']:,}</td>"
+            f"<td class=n>{c(gap_pre)} / {c(gap_live)}</td><td class=n>{100 * tot['gp'] / tot['pre'] if tot['pre'] else 0:.1f}% / {100 * tot['gl'] / tot['live'] if tot['live'] else 0:.1f}%</td>"
+            f"<td class=n>{tot['ep']} / {tot['el']}</td><td class=n>${tot['pp']:,.0f} / ${tot['pl']:,.0f}</td><td class=n>{tot['qp']} / {tot['ql']}</td>"
+            f"<td class=n>${tot['qpp']:,.0f} / ${tot['qpl']:,.0f}</td></tr>")
+    table = ("<table><thead><tr><th>League</th><th class=n>Games</th><th class=n>Minutes pre / live</th><th class=n>Mean |mid gap| pre / live</th>"
+             "<th class=n>Best prices cross pre / live</th><th class=n>1-min signals pre / live</th><th class=n>Profit, zero latency pre / live</th>"
+             "<th class=n>Persisted ≥2 min pre / live</th><th class=n>Profit, persistent pre / live</th></tr></thead><tbody>" + body + foot + "</tbody></table>")
+    top.sort(key=lambda x: -x["net"])
+    top_rows = "".join(
+        f"<tr><td>{x['league'].upper()}</td><td>{x['game'].split(':')[1]}</td><td>{x['team']}</td><td class=mono>{datetime.fromtimestamp(x['ts'], tz=timezone.utc).strftime('%m-%d %H:%M')}</td>"
+        f"<td>{'in game' if x['live'] else 'pre'}</td><td class=n>{x['k_bid']:.2f} / {x['k_ask']:.2f}</td><td class=n>{x['p_mid']:.3f}</td><td class=mono>{x['side']}</td>"
+        f"<td class=n>{x['gross'] * 100:+.1f}¢</td><td class=n>{x['net'] * 100:+.2f}%</td></tr>" for x in top[:10])
+    days = max(r["days"] for r in runs)
+    return rows, {"BT_TABLE": table, "BT_DAYS": str(days), "BT_GAMES": str(tot["games"]), "BT_LEGS": str(tot["legs"]),
+                  "BT_MIN_PRE": f"{tot['pre']:,}", "BT_MIN_LIVE": f"{tot['live']:,}",
+                  "BT_PROFIT_1M": f"${tot['pp'] + tot['pl']:,.0f}", "BT_PROFIT_PERSIST": f"${tot['qpp'] + tot['qpl']:,.0f}",
+                  "BT_SIGNALS_1M": f"{tot['ep'] + tot['el']:,}", "BT_PERSIST": f"{tot['qp'] + tot['ql']:,}", "BT_SIZE": f"{runs[0]['size']:.0f}",
+                  "BT_TOP": top_rows, "BT_GROSS_PRE": f"{100 * tot['gp'] / tot['pre'] if tot['pre'] else 0:.1f}%",
+                  "BT_GROSS_LIVE": f"{100 * tot['gl'] / tot['live'] if tot['live'] else 0:.1f}%", "BT_GAP_PRE": c(gap_pre), "BT_GAP_LIVE": c(gap_live),
+                  "BT_SPREAD": f"{runs[0]['poly_spread'] * 100:.0f}"}
+
+
 # ----------------------------------------------------------------------------- markdown (docs/ANALYSIS.md §3)
 def live_markdown(a: dict, ctx: dict) -> str:
     g = a["phases_by_group"]
@@ -322,6 +385,7 @@ def main() -> None:
     ap.add_argument("--series-team", default="Dodgers")
     ap.add_argument("--out", default=str(Path(__file__).with_name("report.html")))
     ap.add_argument("--update-md", action="store_true", help="fill the live section of docs/ANALYSIS.md")
+    ap.add_argument("--backtest-json", default="", help="comma list of `arb backtest --json` outputs to render")
     args = ap.parse_args()
     s = Settings.from_env()
     store = Store(s.db_path)
@@ -359,6 +423,7 @@ def main() -> None:
         f"<td class=n>{x['fair']:.3f}</td><td class=n>{x['fair_power']:.3f}</td><td class=n>{x['pm_bid']:.2f} / {x['pm_ask']:.2f}</td>"
         f"<td class=n>{((x['pm_bid'] + x['pm_ask']) / 2 - x['fair_power']) * 100:+.1f}</td></tr>" for x in v.get("worst", []))
 
+    bt_rows, bt_ctx = backtest_section([x for x in args.backtest_json.split(",") if x])
     data = {"series": ser, "bars": bars, "team": args.series_team}
     ctx = {
         "GEN_TS": datetime.now(timezone.utc).strftime("%-d %b %Y, %H:%M UTC"),
@@ -395,6 +460,7 @@ def main() -> None:
         "PHASE_TABLE": phase_table(a), "EPISODE_TABLE": episodes_table(a), "NET_LIST": net_list(a),
         "SERIES_TEAM": args.series_team, "SERIES_N": str(len(ser)),
         "DATA_JSON": json.dumps(data, separators=(",", ":")).replace("</", "<\\/"),
+        **bt_ctx,
     }
     html = Template(TEMPLATE.read_text()).safe_substitute(ctx)
     Path(args.out).write_text(html)

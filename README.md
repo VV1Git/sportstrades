@@ -94,9 +94,35 @@ arb live --leagues mlb,ncaaf --interval 6 --duration 7200   # sample both venues
 arb live-report                 # pre-game vs in-game decoupling: gaps, phantom crossings, episode lengths
 arb vegas --min-edge 0.02       # only the sportsbook comparison, gaps ≥ 2 points, both de-vig methods
 arb match --scope all --top 30  # inspect matches and fuzzy pair candidates
+arb backtest --leagues mlb --days 30            # replay past games minute by minute (Kalshi candles + Polymarket history)
 arb settle                      # settle paper trades against Kalshi/Polymarket results and ESPN finals
 arb report                      # P&L summary, open/settled trades, last scan's discrepancies
 ```
+
+### Running it all the time
+
+```bash
+nohup scripts/paper_trader.sh >/dev/null 2>&1 &   # scans every league both venues list, every 60 s, forever
+cat data/status.txt                                # one-line answer: what the simulation has made so far
+tail -f data/logs/paper_trader.log                 # every scan, every paper fill, every settlement
+arb report                                         # full ledger
+```
+
+`scripts/paper_trader.sh` restarts `arb run` if it ever dies and rewrites `data/status.json` / `data/status.txt`
+after every scan (cash, deployed, realized P&L, locked-in profit on open hedges, last scan's opportunities). To keep
+it running across reboots install `scripts/com.sportstrades.paper-trader.plist` as a LaunchAgent (instructions in the
+file). Tune with `INTERVAL=90 LEAGUES=all scripts/paper_trader.sh`.
+
+### Historical replay
+
+`arb backtest` pulls, for every settled game matched across the venues in the last N days, Kalshi's one-minute
+candlesticks (closing YES bid and ask per minute) and Polymarket's per-minute price history for the same team, aligns
+them and asks at each minute whether YES on one venue plus NO on the other would have cost less than $1 after fees.
+Polymarket's history is a mid price, so a spread is assumed (`--poly-spread`, default 2¢). Two numbers come out: profit
+if a zero-latency taker filled `--size` contracts on every one-minute signal (an upper bound), and profit on signals
+that were still there a full minute later (what a human-speed trader could act on). Polymarket's history point stamped
+at minute *m* holds the price at the *start* of *m*; the replay shifts it by one minute to line up with Kalshi's closes,
+which was verified against both venues' trade prints. Data is cached under `data/cache/hist/`.
 
 Findings from the first day of scans, including the in-game and niche-market analysis, are written up in
 [docs/ANALYSIS.md](docs/ANALYSIS.md).
