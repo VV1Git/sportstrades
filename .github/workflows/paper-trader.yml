@@ -47,6 +47,7 @@ permissions:
   contents: write            # to push the ledger branch
   pages: write               # to publish the dashboard
   id-token: write            # required by actions/deploy-pages
+  deployments: write         # to prune superseded Pages deployment records
 
 jobs:
   scan:
@@ -127,6 +128,27 @@ jobs:
 
       - id: pages
         uses: actions/deploy-pages@v4
+
+      # Every Pages publish leaves a deployment record behind. GitHub marks the
+      # superseded ones inactive but never removes them, so at ~12 runs a day the
+      # environment page would grow by thousands a year. Keep the recent ones for
+      # rollback context and drop the rest. Never touches the live deployment, and
+      # never fails the run.
+      - name: Prune superseded Pages deployments
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP: '10'
+        run: |
+          n=0; pruned=0
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&per_page=100" --jq '.[].id'); do
+            n=$((n + 1))
+            [ "$n" -le "$KEEP" ] && continue
+            state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" --jq '.[0].state // "unknown"')
+            [ "$state" = "inactive" ] || continue        # only ever the superseded ones
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/deployments/$id" >/dev/null 2>&1 && pruned=$((pruned + 1))
+          done
+          echo "kept $KEEP most recent, pruned $pruned of $n deployment records"
 
       - uses: actions/upload-artifact@v4
         with:
