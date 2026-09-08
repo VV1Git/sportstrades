@@ -52,10 +52,14 @@ class Store:
         self.db = sqlite3.connect(str(path))
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        try:  # columns added after the first release
-            self.db.execute("ALTER TABLE discrepancies ADD COLUMN fair_power REAL")
-        except sqlite3.OperationalError:
-            pass
+        for ddl in ("ALTER TABLE discrepancies ADD COLUMN fair_power REAL",
+                    "ALTER TABLE trades ADD COLUMN fingerprint TEXT",
+                    "ALTER TABLE trades ADD COLUMN source TEXT DEFAULT 'live'"):
+            try:  # columns added after the first release
+                self.db.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_trades_fp ON trades(fingerprint, status)")
 
     # -- scans ------------------------------------------------------------
     def start_scan(self, scope: str, leagues: list[str]) -> int:
@@ -94,13 +98,21 @@ class Store:
 
     # -- trades -----------------------------------------------------------
     def add_trade(self, opp_id: int | None, scan_id: int, kind: str, match_key: str, description: str,
-                  qty: float, cost: float, fees: float, payout_if_complete: float, legs: list[Leg]) -> int:
+                  qty: float, cost: float, fees: float, payout_if_complete: float, legs: list[Leg],
+                  fingerprint: str | None = None, source: str = "live") -> int:
         cur = self.db.execute(
-            "INSERT INTO trades(opp_id, scan_id, ts, kind, match_key, description, qty, cost, fees, payout_if_complete, legs)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (opp_id, scan_id, now(), kind, match_key, description, qty, cost, fees, payout_if_complete, legs_to_json(legs)))
+            "INSERT INTO trades(opp_id, scan_id, ts, kind, match_key, description, qty, cost, fees, payout_if_complete,"
+            " legs, fingerprint, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (opp_id, scan_id, now(), kind, match_key, description, qty, cost, fees, payout_if_complete,
+             legs_to_json(legs), fingerprint, source))
         self.db.commit()
         return int(cur.lastrowid)
+
+    def open_fingerprints(self) -> set[str]:
+        """Positions already on the book. An arbitrage that is still showing on
+        the next scan is the same resting depth, not new depth to buy again."""
+        return {r[0] for r in self.db.execute(
+            "SELECT DISTINCT fingerprint FROM trades WHERE status='open' AND fingerprint IS NOT NULL")}
 
     def open_trades(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM trades WHERE status='open' ORDER BY id").fetchall()

@@ -319,6 +319,53 @@ def _markdown_report(store: Store, s, title: str = "Paper-trading ledger") -> st
     return "\n".join(lines)
 
 
+def cmd_dedupe(args) -> None:
+    """Backfill position fingerprints and void positions that were opened more than
+    once. Before the fingerprint check existed, a mispricing that persisted across
+    scans was re-bought on every pass, inventing depth the book never offered."""
+    from .paper import fingerprint
+    from .store import legs_from_json
+    s = _settings(args)
+    store = Store(s.db_path)
+    rows = store.db.execute("SELECT id, ts, status, fingerprint, legs, cost, pnl, description FROM trades ORDER BY id").fetchall()
+    backfilled = 0
+    fps: dict[int, str] = {}
+    for r in rows:
+        fp = r["fingerprint"] or fingerprint(legs_from_json(r["legs"]))
+        fps[r["id"]] = fp
+        if not r["fingerprint"]:
+            store.db.execute("UPDATE trades SET fingerprint=? WHERE id=?", (fp, r["id"]))
+            backfilled += 1
+    store.db.commit()
+
+    seen: dict[str, int] = {}
+    dupes: list[dict] = []
+    for r in rows:                       # rows are in id order, so the first of each group is the original
+        fp = fps[r["id"]]
+        if fp in seen:
+            dupes.append({"id": r["id"], "kept": seen[fp], "cost": r["cost"], "pnl": r["pnl"],
+                          "status": r["status"], "desc": (r["description"] or "")[:70]})
+        else:
+            seen[fp] = r["id"]
+    console.print(f"{len(rows)} trades · {backfilled} fingerprints backfilled · "
+                  f"{len(dupes)} repeat entries of {len({d['kept'] for d in dupes})} positions")
+    for d in dupes[:12]:
+        console.print(f"  [dim]#{d['id']} duplicates #{d['kept']} ({d['status']}, ${d['cost']:.2f}) {d['desc']}")
+    if len(dupes) > 12:
+        console.print(f"  [dim]... and {len(dupes) - 12} more")
+    if not dupes:
+        return
+    if not args.apply:
+        console.print("[yellow]dry run. Re-run with --apply to void them.")
+        return
+    ids = [d["id"] for d in dupes]
+    store.db.executemany("UPDATE trades SET status='void', pnl=NULL, payout=NULL, note=? WHERE id=?",
+                         [("voided: duplicate of an already-open position", i) for i in ids])
+    store.db.commit()
+    console.print(f"[green]voided {len(ids)} duplicate trades")
+    console.print(report.summary_table(store))
+
+
 def cmd_report(args) -> None:
     s = _settings(args)
     store = Store(s.db_path)
@@ -416,6 +463,11 @@ def main(argv: list[str] | None = None) -> None:
     sp = sub.add_parser("settle", help="settle open paper trades against resolutions")
     common(sp, scope=False)
     sp.set_defaults(fn=cmd_settle)
+
+    sp = sub.add_parser("dedupe", help="void positions that were opened more than once (pre-fingerprint ledgers)")
+    common(sp, scope=False)
+    sp.add_argument("--apply", action="store_true", help="actually void them (default is a dry run)")
+    sp.set_defaults(fn=cmd_dedupe)
 
     sp = sub.add_parser("report", help="paper-trading P&L report")
     common(sp, scope=False)

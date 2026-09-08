@@ -37,6 +37,32 @@ def money(x: float, nd: int = 2) -> str:
     return f"{'-' if x < 0 else ''}${abs(x):,.{nd}f}"
 
 
+def load_replays(paths: list[str]) -> list[dict]:
+    """Historical replays produced by `arb backtest --json`. These are simulated on
+    each venue's own recorded history, not live paper trades, so they are shown
+    separately from the ledger rather than merged into it."""
+    out = []
+    for pth in paths:
+        f = Path(pth)
+        if not f.exists():
+            continue
+        try:
+            d = json.loads(f.read_text())
+        except ValueError:
+            continue
+        if not d.get("curve"):
+            continue
+        t = d["total"]
+        out.append({
+            "name": f.stem.replace("backtest_", "").replace("_", " ").replace("30d", "").replace("14d", "").strip().title() or f.stem,
+            "days": d["days"], "size": d["size"], "games": t["games"], "curve": d["curve"],
+            "total": t["profit_pre"] + t["profit_live"],
+            "persist": t.get("persist_profit_pre", 0) + t.get("persist_profit_live", 0),
+            "signals": t["episodes_pre"] + t["episodes_live"],
+        })
+    return out
+
+
 def load(db_path: Path, bankroll: float) -> dict:
     db = sqlite3.connect(str(db_path))
     db.row_factory = sqlite3.Row
@@ -115,7 +141,7 @@ def rows_html(trades: list[dict], settled: bool) -> str:
 TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="300">
+<meta http-equiv="refresh" content="600">
 <title>sportstrades · paper-trading dashboard</title>
 <style>
 :root{color-scheme:light;
@@ -182,7 +208,7 @@ a{color:inherit}
 <header>
   <div><h1>sportstrades · paper trading</h1>
     <div class="sub">Simulated cross-venue arbitrage between Kalshi, Polymarket and sportsbook lines. No real orders.</div></div>
-  <div class="live"><i></i>updated __GEN__ · reloads every 5 min</div>
+  <div class="live"><i></i>updated __GEN__ · scans every 10 min</div>
 </header>
 
 <div class="hero">
@@ -212,6 +238,8 @@ a{color:inherit}
   <p class="cap">Opportunities found per scan. Each bar is one pass over both venues; a grey bar is a scan that found nothing, which is the normal result.</p>
   <div id="activity"></div><div class="tip" id="act-tip"></div>
 </div>
+
+__REPLAY_CARD__
 
 <div class="grid2">
   <div class="card"><h2>Settled</h2><p class="cap">Resolved against each venue's own result.</p>
@@ -307,9 +335,85 @@ A.forEach(function(a,i){var h=a.o?Math.max(3,(H-m.t-m.b)*a.o/ymax):2,X=x(i)-bw/2
 tx(el('text',{x:m.l,y:H-m.b+17},svg),A[0].t.slice(5));
 tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),A[A.length-1].t.slice(5)+'Z');
 })();
+
+/* historical replay: cumulative simulated profit per day, one line per window */
+(function(){
+var R=D.replays||[],host=document.getElementById('replay'),tip=document.getElementById('replay-tip');
+if(!host)return;
+if(!R.length){host.innerHTML='<p class="muted">No replay data. Run <code>arb backtest --json</code>.</p>';return}
+var W=1040,H=250,m={l:60,r:26,t:14,b:30};
+var days=[];R.forEach(function(r){r.curve.forEach(function(p){if(days.indexOf(p.d)<0)days.push(p.d)})});
+days.sort();
+var xi={};days.forEach(function(d,i){xi[d]=i});
+var n=days.length;if(n<2){host.innerHTML='<p class="muted">Not enough days to plot.</p>';return}
+var vmax=0;R.forEach(function(r){r.curve.forEach(function(p){if(p.c>vmax)vmax=p.c})});
+var st=step(vmax,4),ymax=Math.ceil(vmax/st)*st||st;
+var x=function(i){return m.l+i/(n-1)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
+var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative simulated profit from the historical replay'},host);
+var g=el('g',{'class':'grid'},svg);
+for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+v.toLocaleString())}
+el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
+var tick=Math.max(1,Math.round(n/7));
+days.forEach(function(d,i){
+ if(i===n-1){tx(el('text',{x:x(i),y:H-m.b+17,'text-anchor':'end'},svg),d.slice(5));return}
+ if(i%tick!==0)return;
+ if(x(n-1)-x(i)<44)return;               /* would collide with the final label */
+ tx(el('text',{x:x(i),y:H-m.b+17,'text-anchor':'middle'},svg),d.slice(5))});
+R.forEach(function(r){
+ var d='';r.curve.forEach(function(p,j){var X=x(xi[p.d]),Y=y(p.c);d+=(j?'L':'M')+X.toFixed(1)+' '+Y.toFixed(1)});
+ el('path',{d:d,fill:'none',stroke:r.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+ var last=r.curve[r.curve.length-1];
+ el('circle',{cx:x(xi[last.d]),cy:y(last.c),r:4.5,fill:r.color,stroke:'var(--surface)','stroke-width':2},svg);
+ tx(el('text',{x:x(xi[last.d])+8,y:y(last.c)+4,fill:'var(--ink)'},svg),'$'+last.c.toLocaleString())});
+var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
+var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
+hit.addEventListener('pointermove',function(e){
+ var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W;
+ var i=Math.max(0,Math.min(n-1,Math.round((vx-m.l)/(W-m.l-m.r)*(n-1))));
+ xh.setAttribute('x1',x(i));xh.setAttribute('x2',x(i));xh.style.opacity=1;
+ tip.innerHTML='';var h=document.createElement('div');h.className='t';h.textContent=days[i];tip.appendChild(h);
+ R.forEach(function(r){var pt=null;r.curve.forEach(function(p){if(p.d===days[i])pt=p});
+  var d2=document.createElement('div');d2.className='r';var sp=document.createElement('span');
+  var k=document.createElement('i');k.style.cssText='display:inline-block;width:14px;border-top:2px solid '+r.color+';margin-right:6px;vertical-align:middle';
+  sp.appendChild(k);sp.appendChild(document.createTextNode(r.name));
+  var b=document.createElement('b');b.textContent=pt?('$'+pt.c.toLocaleString()+(pt.n?'  ('+pt.n+' signals)':'')):'—';
+  d2.appendChild(sp);d2.appendChild(b);tip.appendChild(d2)});
+ tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
+ var L=e.clientX-cr.left+14;if(L+250>cr.width)L-=278;tip.style.left=L+'px';tip.style.top=(hr.top-cr.top+8)+'px'});
+hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
+})();
 })();
 </script>
 """
+
+
+REPLAY_CARD = """
+<div class="card">
+  <h2>Historical replay</h2>
+  <p class="cap">A separate experiment, not the live ledger. Every settled game on both venues over the window
+  is replayed minute by minute from Kalshi's candlesticks and Polymarket's price history, filling __RSIZE__ contracts
+  on each crossing that clears fees. It is an upper bound: it assumes zero latency and that the recorded price was
+  executable. Of the __RTOTAL__ below, only __RPERSIST__ came from gaps that were still open a minute later.</p>
+  <div class="legend">__RLEGEND__</div>
+  <div id="replay"></div><div class="tip" id="replay-tip"></div>
+</div>"""
+
+
+def render_replays(reps: list[dict]) -> tuple[str, str]:
+    if not reps:
+        return "", "[]"
+    colors = ["var(--acc)", "var(--acc2)"]
+    legend = "".join(
+        f"<span><i style=\"border-color:{colors[i % 2]}\"></i>{r['name']} · {r['days']}d · {r['games']} games</span>"
+        for i, r in enumerate(reps))
+    card = (REPLAY_CARD
+            .replace("__RLEGEND__", legend)
+            .replace("__RSIZE__", f"up to {reps[0]['size']:.0f}")
+            .replace("__RTOTAL__", money(sum(r["total"] for r in reps), 0))
+            .replace("__RPERSIST__", money(sum(r["persist"] for r in reps), 0)))
+    data = json.dumps([{"name": r["name"], "curve": r["curve"], "color": colors[i % 2]}
+                       for i, r in enumerate(reps)], separators=(",", ":"))
+    return card, data
 
 
 def main() -> None:
@@ -317,8 +421,12 @@ def main() -> None:
     ap.add_argument("--db", default="data/cloud.db")
     ap.add_argument("--out", default="site/index.html")
     ap.add_argument("--bankroll", type=float, default=10_000.0)
+    ap.add_argument("--backtest", default="docs/backtest_majors_30d.json,docs/backtest_niche_14d.json",
+                    help="comma list of `arb backtest --json` outputs to chart alongside the ledger")
     a = ap.parse_args()
     d = load(Path(a.db), a.bankroll)
+    reps = load_replays([x.strip() for x in a.backtest.split(",") if x.strip()])
+    replay_card, replay_data = render_replays(reps)
 
     league_rows = "".join(
         f"<tr><td>{r['league'].upper()}</td><td class=n>{r['n']}</td><td class=n>{money(r['cost'], 0)}</td>"
@@ -336,13 +444,16 @@ def main() -> None:
         "__SETTLED_ROWS__": rows_html(d["settled_rows"], True),
         "__OPEN_ROWS__": rows_html(d["open_rows"], False),
         "__LEAGUE_ROWS__": league_rows,
-        "__DATA__": json.dumps({"curve": d["curve"], "activity": d["activity"]}, separators=(",", ":")).replace("</", "<\\/"),
+        "__REPLAY_CARD__": replay_card,
+        "__DATA__": json.dumps({"curve": d["curve"], "activity": d["activity"],
+                                "replays": json.loads(replay_data)}, separators=(",", ":")).replace("</", "<\\/"),
     }.items():
         html = html.replace(k, v)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html)
-    print(f"wrote {out} ({len(html) / 1024:.0f} KB) · profit {money(d['total'])} · {d['n_settled']} settled, {d['n_open']} open")
+    print(f"wrote {out} ({len(html) / 1024:.0f} KB) · profit {money(d['total'])} · {d['n_settled']} settled, "
+          f"{d['n_open']} open · {len(reps)} replay series")
 
 
 if __name__ == "__main__":

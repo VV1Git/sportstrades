@@ -310,6 +310,20 @@ class Backtester:
         per_game: dict[str, float] = {}
         for r in results:
             per_game[r.game_key] = per_game.get(r.game_key, 0.0) + r.profit_pre + r.profit_live
+        # daily curve: one point per day, so the dashboard can plot 30 days in a few hundred bytes
+        from collections import defaultdict
+        per_day: dict[str, dict] = defaultdict(lambda: {"p": 0.0, "n": 0, "live": 0})
+        for r in results:
+            for sig in r.signals:
+                day = datetime.fromtimestamp(sig["ts"], tz=timezone.utc).strftime("%Y-%m-%d")
+                per_day[day]["p"] += sig["profit"]
+                per_day[day]["n"] += 1
+                per_day[day]["live"] += 1 if sig["live"] else 0
+        curve, run = [], 0.0
+        for day in sorted(per_day):
+            v = per_day[day]
+            run += v["p"]
+            curve.append({"d": day, "p": round(v["p"], 2), "c": round(run, 2), "n": v["n"], "live": v["live"]})
         return {"days": self.days, "size": self.size, "poly_spread": 2 * self.half, "games_matched": n_games, "seconds": secs,
-                "by_league": by_league, "total": total, "top_signals": top,
+                "by_league": by_league, "total": total, "top_signals": top, "curve": curve,
                 "games_with_any_profit": sum(1 for v in per_game.values() if v > 0), "games_total": len(per_game)}

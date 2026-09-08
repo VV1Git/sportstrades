@@ -2,6 +2,7 @@
 respecting per-trade and per-market exposure caps and available cash."""
 from __future__ import annotations
 
+import hashlib
 import math
 
 from .config import Settings
@@ -21,6 +22,16 @@ def scale_legs(legs: list[Leg], factor: float) -> list[Leg]:
     return out
 
 
+def fingerprint(legs: list[Leg]) -> str:
+    """Stable identity for a position: which contract, on which venue, which way.
+
+    Two scans minutes apart that both see the same resting mispricing describe the
+    *same* opportunity, not two. Without this the ledger re-buys a persistent gap
+    on every pass and reports depth that never existed."""
+    parts = sorted(f"{l.venue}|{l.outcome_id}|{l.side}" for l in legs)
+    return hashlib.sha1("||".join(parts).encode()).hexdigest()[:16]
+
+
 class PaperTrader:
     def __init__(self, store: Store, settings: Settings):
         self.store = store
@@ -33,9 +44,13 @@ class PaperTrader:
         taken: list[dict] = []
         cash = self.cash()
         seen_keys: dict[str, float] = {}
+        held = self.store.open_fingerprints()
         for opp, opp_id in sorted(zip(opps, opp_ids), key=lambda x: -x[0].margin):
             if opp.margin < self.s.min_margin or opp.qty < 1:
                 continue
+            fp = fingerprint(opp.legs)
+            if fp in held:
+                continue  # already holding this exact hedge; the book has not offered new depth
             exposure = self.store.open_exposure(opp.match_key) + seen_keys.get(opp.match_key, 0.0)
             room = min(self.s.max_per_trade, self.s.max_per_key - exposure, cash)
             if room < 1.0:
@@ -51,8 +66,10 @@ class PaperTrader:
             payout = qty
             if payout - cost <= 0:
                 continue
-            tid = self.store.add_trade(opp_id, scan_id, opp.kind, opp.match_key, opp.description, qty, cost, fees, payout, legs)
+            tid = self.store.add_trade(opp_id, scan_id, opp.kind, opp.match_key, opp.description, qty, cost, fees,
+                                       payout, legs, fingerprint=fp)
             self.store.mark_taken(opp_id)
+            held.add(fp)
             cash -= cost
             seen_keys[opp.match_key] = seen_keys.get(opp.match_key, 0.0) + cost
             taken.append({"trade_id": tid, "kind": opp.kind, "key": opp.match_key, "qty": qty, "cost": cost,
