@@ -77,14 +77,21 @@ def load(db_path: Path, bankroll: float) -> dict:
     deployed = sum(t["cost"] for t in open_t)
     cost_settled = sum(t["cost"] for t in settled)
 
-    # cumulative realized profit, stepped by settlement time
-    curve = []
-    run = 0.0
-    for t in sorted((t for t in settled if t["settled_ts"]), key=lambda t: t["settled_ts"]):
-        run += t["pnl"] or 0
-        curve.append({"ms": epoch_ms(t["settled_ts"]), "t": (t["settled_ts"] or "")[:16].replace("T", " "),
-                      "v": round(run, 4), "id": t["id"],
-                      "d": (t["description"] or "")[:80], "p": round(t["pnl"] or 0, 2)})
+    # cumulative realized profit, stepped by settlement time, for a chosen set of leagues
+    def build_curve(keep=None) -> list[dict]:
+        out, run = [], 0.0
+        for t in sorted((t for t in settled if t["settled_ts"]), key=lambda t: t["settled_ts"]):
+            if keep is not None and (t["match_key"] or ":").split(":")[0] not in keep:
+                continue
+            run += t["pnl"] or 0
+            out.append({"ms": epoch_ms(t["settled_ts"]), "t": (t["settled_ts"] or "")[:16].replace("T", " "),
+                        "v": round(run, 4), "id": t["id"],
+                        "d": (t["description"] or "")[:80], "p": round(t["pnl"] or 0, 2)})
+        return [c for c in out if c["ms"] is not None]
+
+    from arb.config import DEFAULT_LEAGUES
+    curve = build_curve()
+    curve_majors = build_curve(set(DEFAULT_LEAGUES))
 
     curve = [c for c in curve if c["ms"] is not None]
     scans = [dict(r) for r in q("SELECT id, ts, n_games, n_opps, duration_s FROM scans WHERE n_games IS NOT NULL ORDER BY id")]
@@ -115,7 +122,7 @@ def load(db_path: Path, bankroll: float) -> dict:
         "n_open": len(open_t), "n_settled": len(settled),
         "n_wins": sum(1 for t in settled if (t["pnl"] or 0) > 0),
         "n_scans": len(scans), "n_opps": one("SELECT COUNT(*) c FROM opportunities")["c"],
-        "curve": curve, "activity": activity[-160:], "by_kind": by_kind, "leagues": leagues,
+        "curve": curve, "curve_majors": curve_majors, "activity": activity[-160:], "by_kind": by_kind, "leagues": leagues,
         "settled_rows": sorted(settled, key=lambda t: t["settled_ts"] or "", reverse=True)[:20],
         "open_rows": sorted(open_t, key=lambda t: -((t["payout_if_complete"] or 0) - t["cost"]))[:20],
         "last_scan": dict(last) if last else None,
@@ -184,17 +191,21 @@ svg .bar{fill:var(--bar)}
 svg .bar.zero{fill:var(--grid)}
 svg .xh{stroke:var(--ink-3);stroke-width:1;opacity:0}
 svg .hit{fill:transparent}
-table{border-collapse:collapse;width:100%;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed}
+.grid2 col.c-id{width:38px}.grid2 col.c-when{width:104px}.grid2 col.c-kind{width:52px}
+.grid2 col.c-qty{width:50px}.grid2 col.c-cost{width:72px}.grid2 col.c-val{width:76px}
 th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--rule);white-space:nowrap}
 th{font:600 11.5px/1.3 var(--sans);color:var(--ink-2);letter-spacing:.02em}
 td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
 td.mono{font-family:var(--mono);color:var(--ink-2)}
-td.desc{white-space:normal;color:var(--ink-2);font-size:12.5px;min-width:260px}
+td.desc{white-space:normal;color:var(--ink-2);font-size:12.5px;overflow-wrap:anywhere}
+th,td{overflow:hidden;text-overflow:ellipsis}
 td.up{color:var(--up)}td.down{color:var(--down)}
 tbody tr:last-child td{border-bottom:0}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 @media (max-width:760px){.grid2{grid-template-columns:1fr}}
 .tw{overflow-x:auto}
+.wrap{overflow-x:clip}
 .muted{color:var(--ink-2)}
 .tip{position:absolute;pointer-events:none;background:var(--tip);border:1px solid var(--rule);border-radius:7px;
  box-shadow:var(--shadow);padding:9px 11px;font:12.5px/1.35 var(--sans);display:none;z-index:3;min-width:180px}
@@ -227,10 +238,22 @@ a{color:inherit}
 </div>
 
 <div class="card">
-  <h2>Cumulative realized profit</h2>
-  <p class="cap">Every settled hedge, in the order it resolved. Steps up only when a game finishes and both legs pay out.</p>
-  <div id="curve"></div><div class="tip" id="curve-tip"></div>
-  <details><summary class="muted">Table view</summary><div class="tw"><table id="curve-table"></table></div></details>
+  <h2>Cumulative profit · major leagues</h2>
+  <p class="cap">NFL, college football, MLB, NHL, WNBA, MLS and the big European soccer leagues. The first segment is
+  replayed from each venue's own recorded history; the second is the live paper ledger, continuing from where the
+  replay ends. The replay is an upper bound, since it assumes zero latency and that every recorded price was executable.</p>
+  <div class="legend" id="lg-major"></div>
+  <div id="c-major"></div><div class="tip" id="c-major-tip"></div>
+</div>
+
+<div class="card">
+  <h2>Cumulative profit · majors and niche</h2>
+  <p class="cap">The same, plus ITF and ATP/WTA tennis, Counter-Strike, Dota 2, League of Legends, Valorant, KBO, NPB,
+  KHL and second-tier soccer. Niche markets are where nearly all of the simulated profit comes from, on both the
+  replay and the live ledger.</p>
+  <div class="legend" id="lg-all"></div>
+  <div id="c-all"></div><div class="tip" id="c-all-tip"></div>
+  <details><summary class="muted">Table view · live settled hedges</summary><div class="tw"><table id="curve-table"></table></div></details>
 </div>
 
 <div class="card">
@@ -239,13 +262,11 @@ a{color:inherit}
   <div id="activity"></div><div class="tip" id="act-tip"></div>
 </div>
 
-__REPLAY_CARD__
-
 <div class="grid2">
   <div class="card"><h2>Settled</h2><p class="cap">Resolved against each venue's own result.</p>
-    <div class="tw"><table><thead><tr><th>#</th><th>Settled</th><th>Kind</th><th class=n>Qty</th><th class=n>Cost</th><th class=n>P&amp;L</th><th>Trade</th></tr></thead><tbody>__SETTLED_ROWS__</tbody></table></div></div>
+    <div class="tw"><table><colgroup><col class=c-id><col class=c-when><col class=c-kind><col class=c-qty><col class=c-cost><col class=c-val><col></colgroup><thead><tr><th>#</th><th>Settled</th><th>Kind</th><th class=n>Qty</th><th class=n>Cost</th><th class=n>P&amp;L</th><th>Trade</th></tr></thead><tbody>__SETTLED_ROWS__</tbody></table></div></div>
   <div class="card"><h2>Open</h2><p class="cap">Hedges waiting on a game to finish, by profit already locked in.</p>
-    <div class="tw"><table><thead><tr><th>#</th><th>Opened</th><th>Kind</th><th class=n>Qty</th><th class=n>Cost</th><th class=n>Locked in</th><th>Trade</th></tr></thead><tbody>__OPEN_ROWS__</tbody></table></div></div>
+    <div class="tw"><table><colgroup><col class=c-id><col class=c-when><col class=c-kind><col class=c-qty><col class=c-cost><col class=c-val><col></colgroup><thead><tr><th>#</th><th>Opened</th><th>Kind</th><th class=n>Qty</th><th class=n>Cost</th><th class=n>Locked in</th><th>Trade</th></tr></thead><tbody>__OPEN_ROWS__</tbody></table></div></div>
 </div>
 
 <div class="card"><h2>By league</h2><p class="cap">Where the simulated money came from.</p>
@@ -266,45 +287,83 @@ function tx(e,s){e.textContent=s;return e}
 function usd(v){return (v<0?'-$':'$')+Math.abs(v).toFixed(2)}
 function step(range,target){var raw=range/target,p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10)),c=raw/p;return (c<1.5?1:c<3.5?2:c<7.5?5:10)*p}
 
-/* cumulative realized profit */
+/* two cumulative-profit charts: replayed history, then the live ledger continuing from it */
+function profitChart(cfg){
+ var host=document.getElementById(cfg.host),tip=document.getElementById(cfg.host+'-tip'),leg=document.getElementById(cfg.legend);
+ if(!host)return;
+ var RE=cfg.replay||[],LI=cfg.live||[];
+ var pts=[];
+ RE.forEach(function(r){pts.push({ms:Date.parse(r.d+'T23:59:59Z'),v:r.c,seg:'replay',lab:r.d,
+   det:(r.n||0)+' signal'+((r.n||0)===1?'':'s')+' that day'})});
+ var base=RE.length?RE[RE.length-1].c:0;
+ var hand=pts.length?pts[pts.length-1].ms:null;
+ LI.forEach(function(r){pts.push({ms:r.ms,v:base+r.v,seg:'live',lab:r.t,det:'trade #'+r.id+' · '+usd(r.p),desc:r.d})});
+ leg.innerHTML='';
+ [[cfg.replayName,'var(--acc2)',RE.length],[cfg.liveName,'var(--acc)',LI.length]].forEach(function(e){
+  var sp=document.createElement('span');var i=document.createElement('i');i.style.borderColor=e[1];
+  sp.appendChild(i);sp.appendChild(document.createTextNode(e[0]+(e[2]?'':' · none yet')));
+  if(!e[2])sp.style.opacity=.55;leg.appendChild(sp)});
+ if(pts.length<2){host.innerHTML='<p class="muted">'+(cfg.empty||'Not enough data to plot yet.')+'</p>';return}
+ var W=1040,H=270,m={l:66,r:74,t:14,b:30};
+ var t0=pts[0].ms,t1=pts[pts.length-1].ms;if(t1<=t0)t1=t0+864e5;
+ var vmax=0;pts.forEach(function(p){if(p.v>vmax)vmax=p.v});
+ var st=step(Math.max(vmax,1),4),ymax=Math.ceil(vmax/st)*st||st;
+ var x=function(t){return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
+ var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':cfg.replayName+' then '+cfg.liveName+', ending '+usd(pts[pts.length-1].v)},host);
+ var g=el('g',{'class':'grid'},svg);
+ for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);
+  tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+Math.round(v).toLocaleString())}
+ el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
+ var span=t1-t0,dayMs=864e5,tickEvery=Math.max(1,Math.ceil(span/dayMs/7));
+ for(var d=new Date(t0);d.getTime()<=t1;d.setUTCDate(d.getUTCDate()+tickEvery)){
+  var X=x(d.getTime());if(X>W-m.r-40)break;
+  tx(el('text',{x:X,y:H-m.b+17,'text-anchor':'middle'},svg),d.toISOString().slice(5,10))}
+ tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),new Date(t1).toISOString().slice(5,10));
+ function seg(name,color){var d='',open=false;
+  pts.forEach(function(p,i){if(p.seg!==name){open=false;return}
+   var X=x(p.ms).toFixed(1),Y=y(p.v).toFixed(1);
+   if(!open){ if(name==='live'&&hand!==null)d+='M'+x(hand).toFixed(1)+' '+y(base).toFixed(1)+'L'+X+' '+Y;
+              else d+='M'+X+' '+Y; open=true }
+   else d+='L'+X+' '+Y});
+  if(d)el('path',{d:d,fill:'none',stroke:color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg)}
+ seg('replay','var(--acc2)');seg('live','var(--acc)');
+ if(hand!==null&&LI.length){
+  var hx=x(hand),flip=hx>W-m.r-96;      /* near the right edge, hang the label to the left */
+  el('line',{x1:hx,x2:hx,y1:m.t,y2:H-m.b,stroke:'var(--rule)','stroke-width':1},svg);
+  el('circle',{cx:hx,cy:y(base),r:4.5,fill:'var(--acc2)',stroke:'var(--surface)','stroke-width':2},svg);
+  tx(el('text',{x:hx+(flip?-6:6),y:m.t+11,'text-anchor':flip?'end':'start',fill:'var(--ink-3)','font-size':'10.5'},svg),'live ledger starts')}
+ var last=pts[pts.length-1];
+ el('circle',{cx:x(last.ms),cy:y(last.v),r:4.5,fill:last.seg==='live'?'var(--acc)':'var(--acc2)',stroke:'var(--surface)','stroke-width':2},svg);
+ tx(el('text',{x:Math.min(x(last.ms)+8,W-4),y:y(last.v)+4,'text-anchor':x(last.ms)+8>W-72?'end':'start',fill:'var(--ink)'},svg),usd(last.v));
+ var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
+ var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
+ hit.addEventListener('pointermove',function(e){
+  var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W,t=t0+(vx-m.l)/(W-m.l-m.r)*(t1-t0),b=0;
+  for(var i=1;i<pts.length;i++)if(Math.abs(pts[i].ms-t)<Math.abs(pts[b].ms-t))b=i;
+  var pt=pts[b];xh.setAttribute('x1',x(pt.ms));xh.setAttribute('x2',x(pt.ms));xh.style.opacity=1;
+  tip.innerHTML='';var h=document.createElement('div');h.className='t';
+  h.textContent=pt.lab+' · '+(pt.seg==='replay'?'replay':'live ledger');tip.appendChild(h);
+  var r1=document.createElement('div');r1.className='r';var s1=document.createElement('span');s1.textContent='Cumulative';
+  var b1=document.createElement('b');b1.textContent=usd(pt.v);r1.appendChild(s1);r1.appendChild(b1);tip.appendChild(r1);
+  var r2=document.createElement('div');r2.className='t';r2.style.marginTop='5px';r2.style.whiteSpace='normal';
+  r2.textContent=pt.desc||pt.det;tip.appendChild(r2);
+  tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
+  var L=e.clientX-cr.left+14;if(L+240>cr.width)L-=268;tip.style.left=L+'px';tip.style.top=(hr.top-cr.top+8)+'px'});
+ hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
+}
+(D.charts||[]).forEach(profitChart);
+
+/* table view of the live settled hedges */
 (function(){
-var S=D.curve,host=document.getElementById('curve'),tip=document.getElementById('curve-tip');
-if(!S.length){host.innerHTML='<p class="muted">No hedge has settled yet. The line appears once a game finishes.</p>';return}
-var W=1040,H=260,m={l:56,r:22,t:14,b:30};
-var ts=S.map(function(r){return r.ms}),vs=S.map(function(r){return r.v});
-var t0=ts[0],t1=ts[ts.length-1];if(t1===t0)t1=t0+60000;
-var vmax=Math.max.apply(null,vs),st=step(Math.max(vmax,0.05),4),ymax=Math.ceil(vmax/st)*st||st;
-var x=function(t){return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
-var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative realized profit, '+usd(vs[vs.length-1])},host);
-var g=el('g',{'class':'grid'},svg);
-for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+v.toFixed(2))}
-el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
-tx(el('text',{x:m.l,y:H-m.b+17},svg),S[0].t+'Z');tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),S[S.length-1].t+'Z');
-var d='';S.forEach(function(r,i){var X=x(ts[i]),Y=y(r.v);d+=(i?('L'+X+' '+y(S[i-1].v)+'L'+X+' '+Y):('M'+X+' '+Y))});
-el('path',{'class':'ln',d:d},svg);
-S.forEach(function(r,i){el('circle',{'class':'dot',cx:x(ts[i]),cy:y(r.v),r:4.5},svg)});
-tx(el('text',{x:x(ts[ts.length-1])+8,y:y(vs[vs.length-1])+4,fill:'var(--ink)'},svg),usd(vs[vs.length-1]));
-var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
-var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
-function near(cx){var rc=svg.getBoundingClientRect(),vx=(cx-rc.left)/rc.width*W,t=t0+(vx-m.l)/(W-m.l-m.r)*(t1-t0),b=0;
- for(var i=1;i<ts.length;i++)if(Math.abs(ts[i]-t)<Math.abs(ts[b]-t))b=i;return b}
-hit.addEventListener('pointermove',function(e){var i=near(e.clientX),r=S[i];
- xh.setAttribute('x1',x(ts[i]));xh.setAttribute('x2',x(ts[i]));xh.style.opacity=1;
- tip.innerHTML='';var h=document.createElement('div');h.className='t';h.textContent=r.t+'Z · trade #'+r.id;tip.appendChild(h);
- [['This trade',usd(r.p)],['Running total',usd(r.v)]].forEach(function(p){var d2=document.createElement('div');d2.className='r';
-  var s=document.createElement('span');s.textContent=p[0];var b=document.createElement('b');b.textContent=p[1];d2.appendChild(s);d2.appendChild(b);tip.appendChild(d2)});
- var dd=document.createElement('div');dd.className='t';dd.style.marginTop='6px';dd.style.whiteSpace='normal';dd.textContent=r.d;tip.appendChild(dd);
- tip.style.display='block';var rc=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
- var L=e.clientX-cr.left+14;if(L+220>cr.width)L-=248;tip.style.left=L+'px';tip.style.top=(rc.top-cr.top+8)+'px'});
-hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
-var tb=document.getElementById('curve-table');
+var tb=document.getElementById('curve-table');if(!tb)return;
+var S=((D.charts||[]).slice(-1)[0]||{}).live||[];
+if(!S.length){tb.innerHTML='<tbody><tr><td class="muted">Nothing settled yet.</td></tr></tbody>';return}
 tb.innerHTML='<thead><tr><th>#</th><th>Settled (UTC)</th><th class=n>Trade P&amp;L</th><th class=n>Running total</th><th>Trade</th></tr></thead>';
 var body=document.createElement('tbody');
-S.slice().reverse().forEach(function(r,i){var tr=document.createElement('tr');
- [[r.id,'mono'],[r.t.replace('T',' ').slice(0,16),'mono'],[usd(r.p),'n'],[usd(r.v),'n'],[r.d,'desc']].forEach(function(c){
+S.slice().reverse().forEach(function(r){var tr=document.createElement('tr');
+ [[r.id,'mono'],[r.t,'mono'],[usd(r.p),'n'],[usd(r.v),'n'],[r.d,'desc']].forEach(function(c){
   var td=document.createElement('td');td.className=c[1];td.textContent=c[0];tr.appendChild(td)});body.appendChild(tr)});
-tb.appendChild(body);
-})();
+tb.appendChild(body)})();
 
 /* scan activity */
 (function(){
@@ -336,84 +395,49 @@ tx(el('text',{x:m.l,y:H-m.b+17},svg),A[0].t.slice(5));
 tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),A[A.length-1].t.slice(5)+'Z');
 })();
 
-/* historical replay: cumulative simulated profit per day, one line per window */
-(function(){
-var R=D.replays||[],host=document.getElementById('replay'),tip=document.getElementById('replay-tip');
-if(!host)return;
-if(!R.length){host.innerHTML='<p class="muted">No replay data. Run <code>arb backtest --json</code>.</p>';return}
-var W=1040,H=250,m={l:60,r:26,t:14,b:30};
-var days=[];R.forEach(function(r){r.curve.forEach(function(p){if(days.indexOf(p.d)<0)days.push(p.d)})});
-days.sort();
-var xi={};days.forEach(function(d,i){xi[d]=i});
-var n=days.length;if(n<2){host.innerHTML='<p class="muted">Not enough days to plot.</p>';return}
-var vmax=0;R.forEach(function(r){r.curve.forEach(function(p){if(p.c>vmax)vmax=p.c})});
-var st=step(vmax,4),ymax=Math.ceil(vmax/st)*st||st;
-var x=function(i){return m.l+i/(n-1)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
-var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative simulated profit from the historical replay'},host);
-var g=el('g',{'class':'grid'},svg);
-for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+v.toLocaleString())}
-el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
-var tick=Math.max(1,Math.round(n/7));
-days.forEach(function(d,i){
- if(i===n-1){tx(el('text',{x:x(i),y:H-m.b+17,'text-anchor':'end'},svg),d.slice(5));return}
- if(i%tick!==0)return;
- if(x(n-1)-x(i)<44)return;               /* would collide with the final label */
- tx(el('text',{x:x(i),y:H-m.b+17,'text-anchor':'middle'},svg),d.slice(5))});
-R.forEach(function(r){
- var d='';r.curve.forEach(function(p,j){var X=x(xi[p.d]),Y=y(p.c);d+=(j?'L':'M')+X.toFixed(1)+' '+Y.toFixed(1)});
- el('path',{d:d,fill:'none',stroke:r.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
- var last=r.curve[r.curve.length-1];
- el('circle',{cx:x(xi[last.d]),cy:y(last.c),r:4.5,fill:r.color,stroke:'var(--surface)','stroke-width':2},svg);
- tx(el('text',{x:x(xi[last.d])+8,y:y(last.c)+4,fill:'var(--ink)'},svg),'$'+last.c.toLocaleString())});
-var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
-var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
-hit.addEventListener('pointermove',function(e){
- var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W;
- var i=Math.max(0,Math.min(n-1,Math.round((vx-m.l)/(W-m.l-m.r)*(n-1))));
- xh.setAttribute('x1',x(i));xh.setAttribute('x2',x(i));xh.style.opacity=1;
- tip.innerHTML='';var h=document.createElement('div');h.className='t';h.textContent=days[i];tip.appendChild(h);
- R.forEach(function(r){var pt=null;r.curve.forEach(function(p){if(p.d===days[i])pt=p});
-  var d2=document.createElement('div');d2.className='r';var sp=document.createElement('span');
-  var k=document.createElement('i');k.style.cssText='display:inline-block;width:14px;border-top:2px solid '+r.color+';margin-right:6px;vertical-align:middle';
-  sp.appendChild(k);sp.appendChild(document.createTextNode(r.name));
-  var b=document.createElement('b');b.textContent=pt?('$'+pt.c.toLocaleString()+(pt.n?'  ('+pt.n+' signals)':'')):'—';
-  d2.appendChild(sp);d2.appendChild(b);tip.appendChild(d2)});
- tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
- var L=e.clientX-cr.left+14;if(L+250>cr.width)L-=278;tip.style.left=L+'px';tip.style.top=(hr.top-cr.top+8)+'px'});
-hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
-})();
 })();
 </script>
 """
 
 
-REPLAY_CARD = """
-<div class="card">
-  <h2>Historical replay</h2>
-  <p class="cap">A separate experiment, not the live ledger. Every settled game on both venues over the window
-  is replayed minute by minute from Kalshi's candlesticks and Polymarket's price history, filling __RSIZE__ contracts
-  on each crossing that clears fees. It is an upper bound: it assumes zero latency and that the recorded price was
-  executable. Of the __RTOTAL__ below, only __RPERSIST__ came from gaps that were still open a minute later.</p>
-  <div class="legend">__RLEGEND__</div>
-  <div id="replay"></div><div class="tip" id="replay-tip"></div>
-</div>"""
+def combine_curves(reps: list[dict]) -> list[dict]:
+    """Daily curves from several replay windows, summed onto one timeline."""
+    per_day: dict[str, dict] = {}
+    for r in reps:
+        prev = 0.0
+        for pt in r["curve"]:
+            day = per_day.setdefault(pt["d"], {"p": 0.0, "n": 0})
+            day["p"] += pt["c"] - prev          # that window's profit on that day
+            day["n"] += pt["n"]
+            prev = pt["c"]
+    out, run = [], 0.0
+    for day in sorted(per_day):
+        run += per_day[day]["p"]
+        out.append({"d": day, "p": round(per_day[day]["p"], 2), "c": round(run, 2), "n": per_day[day]["n"]})
+    return out
 
 
-def render_replays(reps: list[dict]) -> tuple[str, str]:
-    if not reps:
-        return "", "[]"
-    colors = ["var(--acc)", "var(--acc2)"]
-    legend = "".join(
-        f"<span><i style=\"border-color:{colors[i % 2]}\"></i>{r['name']} · {r['days']}d · {r['games']} games</span>"
-        for i, r in enumerate(reps))
-    card = (REPLAY_CARD
-            .replace("__RLEGEND__", legend)
-            .replace("__RSIZE__", f"up to {reps[0]['size']:.0f}")
-            .replace("__RTOTAL__", money(sum(r["total"] for r in reps), 0))
-            .replace("__RPERSIST__", money(sum(r["persist"] for r in reps), 0)))
-    data = json.dumps([{"name": r["name"], "curve": r["curve"], "color": colors[i % 2]}
-                       for i, r in enumerate(reps)], separators=(",", ":"))
-    return card, data
+def chart_payload(d: dict, reps: list[dict]) -> dict:
+    """Two cumulative-profit charts on one time axis: replay first, live continuing
+    from it. Kept as two labelled segments of one line rather than two independent
+    lines, because they are the same question asked of two different data sources."""
+    majors = next((r for r in reps if r["name"].lower().startswith("majors")), None)
+    combined = combine_curves(reps) if reps else []
+    return {
+        "activity": d["activity"],
+        "charts": [
+            {"host": "c-major", "legend": "lg-major",
+             "replay": majors["curve"] if majors else [],
+             "replayName": f"Historical replay · {majors['days']}d · {majors['games']} games" if majors else "Historical replay",
+             "live": d["curve_majors"], "liveName": "Live paper ledger",
+             "empty": "No major-league hedge has settled live yet."},
+            {"host": "c-all", "legend": "lg-all",
+             "replay": combined,
+             "replayName": f"Historical replay · {max((r['days'] for r in reps), default=0)}d" if reps else "Historical replay",
+             "live": d["curve"], "liveName": "Live paper ledger",
+             "empty": "No hedge has settled live yet."},
+        ],
+    }
 
 
 def main() -> None:
@@ -426,7 +450,6 @@ def main() -> None:
     a = ap.parse_args()
     d = load(Path(a.db), a.bankroll)
     reps = load_replays([x.strip() for x in a.backtest.split(",") if x.strip()])
-    replay_card, replay_data = render_replays(reps)
 
     league_rows = "".join(
         f"<tr><td>{r['league'].upper()}</td><td class=n>{r['n']}</td><td class=n>{money(r['cost'], 0)}</td>"
@@ -444,16 +467,15 @@ def main() -> None:
         "__SETTLED_ROWS__": rows_html(d["settled_rows"], True),
         "__OPEN_ROWS__": rows_html(d["open_rows"], False),
         "__LEAGUE_ROWS__": league_rows,
-        "__REPLAY_CARD__": replay_card,
-        "__DATA__": json.dumps({"curve": d["curve"], "activity": d["activity"],
-                                "replays": json.loads(replay_data)}, separators=(",", ":")).replace("</", "<\\/"),
+        "__DATA__": json.dumps(chart_payload(d, reps), separators=(",", ":")).replace("</", "<\\/"),
     }.items():
         html = html.replace(k, v)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html)
     print(f"wrote {out} ({len(html) / 1024:.0f} KB) · profit {money(d['total'])} · {d['n_settled']} settled, "
-          f"{d['n_open']} open · {len(reps)} replay series")
+          f"{d['n_open']} open · {len(reps)} replay series"
+          f" · replay {money(sum(r['total'] for r in reps), 0)}")
 
 
 if __name__ == "__main__":
