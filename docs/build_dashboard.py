@@ -224,31 +224,33 @@ a{color:inherit}
 </header>
 
 <div class="hero">
-  <div class="lab">Live paper ledger · simulated profit</div>
-  <div class="big">__TOTAL__</div>
-  <div class="note">__REALIZED__ realized on __NSETTLED__ settled hedges, __LOCKED__ already locked in by __NOPEN__ open ones.
-  Every hedge buys both sides of an outcome, so a settled trade pays the same whoever wins.
-  <br>The historical replay charted below is a <em>separate</em> experiment on past games and is never added to this
-  figure. It reached __REPLAY_TOTAL__ over its window.</div>
+  <div class="lab">Cumulative simulated profit · all markets, __REPLAY_DAYS__ days</div>
+  <div class="big">__GRAND__</div>
+  <div class="note">What this strategy would have produced running continuously since __START__.
+  <b>__REPLAY_TOTAL__</b> of it is replayed from each venue's recorded history for the period before the scanner
+  existed, which is an upper bound because it assumes zero latency and that every recorded price was executable.
+  <b>__REALIZED__</b> is what the live ledger has actually realized since, with __LOCKED__ more already locked in by
+  __NOPEN__ hedges still waiting on a game.</div>
 </div>
 
 <div class="tiles">
-  <div class="tile"><div class="v">__REALIZED__</div><div class="l">Realized on settled games (__WINS__ of __NSETTLED__ profitable)</div></div>
+  <div class="tile"><div class="v">__REPLAY_TOTAL__</div><div class="l">Replayed from history, before the scanner was switched on</div></div>
+  <div class="tile"><div class="v">__REALIZED__</div><div class="l">Realized live since (__WINS__ of __NSETTLED__ settled hedges profitable)</div></div>
   <div class="tile"><div class="v">__LOCKED__</div><div class="l">Locked in by __NOPEN__ open hedges</div></div>
   <div class="tile"><div class="v">__DEPLOYED__</div><div class="l">Capital deployed of __BANKROLL__</div></div>
-  <div class="tile"><div class="v">__RET__</div><div class="l">Return on settled capital (__COSTSETTLED__)</div></div>
+  <div class="tile"><div class="v">__RET__</div><div class="l">Live return on settled capital (__COSTSETTLED__)</div></div>
   <div class="tile"><div class="v">__NSCANS__</div><div class="l">Scans run · __NOPPS__ opportunities seen</div></div>
-  <div class="tile"><div class="v">__REPLAY_TOTAL__</div><div class="l">Historical replay over __REPLAY_DAYS__ days — a separate experiment, and an upper bound</div></div>
+
 </div>
 
 <div class="card">
   <h2>Cumulative profit</h2>
-  <p class="cap">Three measurements on one timeline. The two replay lines are the same experiment at two scopes:
-  major leagues, and major leagues plus the niche ones (ITF and ATP/WTA tennis, Counter-Strike, Dota 2, League of
-  Legends, Valorant, KBO, NPB, KHL, second-tier soccer). The gap between them is what niche markets add.
-  <b>Every line starts at zero and is measured on its own</b>, never summed: the replays cover past games and are an
-  upper bound, assuming zero latency and that each recorded price was executable, while the live ledger is what the
-  scanner has actually accumulated since it was switched on.</p>
+  <p class="cap">One continuous run per scope. Each line is replayed from each venue's recorded history up to the
+  marker, then carries on with the live ledger. The two scopes are nested, major leagues and major leagues plus the
+  niche ones (ITF and ATP/WTA tennis, Counter-Strike, Dota 2, League of Legends, Valorant, KBO, NPB, KHL, second-tier
+  soccer), so the gap between the lines is what niche markets add. The replayed portion is an upper bound: it assumes
+  zero latency and that every recorded price was executable. The live portion counts realized profit only, so the
+  __LOCKED__ locked in by hedges still waiting on a game joins the line as those games finish.</p>
   <div class="legend" id="lg-main"></div>
   <div id="c-main"></div><div class="tip" id="c-main-tip"></div>
   <details><summary class="muted">Table view · live settled hedges</summary><div class="tw"><table id="curve-table"></table></div></details>
@@ -285,31 +287,29 @@ function tx(e,s){e.textContent=s;return e}
 function usd(v){return (v<0?'-$':'$')+Math.abs(v).toFixed(2)}
 function step(range,target){var raw=range/target,p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10)),c=raw/p;return (c<1.5?1:c<3.5?2:c<7.5?5:10)*p}
 
-/* one cumulative-profit chart: two replay scopes and the live ledger, each from zero */
+/* one cumulative-profit chart: each scope replayed, then continuing live */
 (function(){
 var host=document.getElementById('c-main'),tip=document.getElementById('c-main-tip'),leg=document.getElementById('lg-main');
 if(!host)return;
 var SER=(D.series||[]).map(function(s){
- return {name:s.name,color:s.color,kind:s.kind,
-  pts:(s.pts||[]).map(function(r){
-   return s.kind==='replay'
-    ? {ms:Date.parse(r.d+'T23:59:59Z'),v:r.c,lab:r.d,det:(r.n||0)+' signal'+((r.n||0)===1?'':'s')+' that day'}
-    : {ms:r.ms,v:r.v,lab:r.t,det:'trade #'+r.id+' · '+usd(r.p),desc:r.d}})}});
+ return {name:s.name,color:s.color,hand:s.hand?Date.parse(s.hand):null,base:s.base,
+  pts:(s.pts||[]).map(function(p){return {ms:typeof p.ms==='string'?Date.parse(p.ms):p.ms,v:p.v,lab:p.lab,seg:p.seg,det:p.det,desc:p.desc}})}});
 leg.innerHTML='';
 SER.forEach(function(s){var sp=document.createElement('span');var i=document.createElement('i');
- i.style.borderColor=s.color;sp.appendChild(i);
- sp.appendChild(document.createTextNode(s.name+(s.pts.length?'':' · none yet')));
- if(!s.pts.length)sp.style.opacity=.55;leg.appendChild(sp)});
+ i.style.borderColor=s.color;sp.appendChild(i);sp.appendChild(document.createTextNode(s.name));leg.appendChild(sp)});
+var lv=document.createElement('span');var li=document.createElement('i');
+li.style.cssText='border-top:2px dotted var(--ink-3);width:20px';lv.appendChild(li);
+lv.appendChild(document.createTextNode('live ledger takes over'));leg.appendChild(lv);
 var all=[];SER.forEach(function(s){all=all.concat(s.pts)});
 if(all.length<2){host.innerHTML='<p class="muted">Not enough data to plot yet.</p>';return}
-var W=1040,H=300,m={l:70,r:86,t:16,b:30};
+var W=1040,H=300,m={l:70,r:96,t:16,b:30};
 var t0=Math.min.apply(null,all.map(function(p){return p.ms})),t1=Math.max.apply(null,all.map(function(p){return p.ms}));
 if(t1<=t0)t1=t0+864e5;
 var vmax=Math.max.apply(null,all.map(function(p){return p.v}));
 var st=step(Math.max(vmax,1),4),ymax=Math.ceil(vmax/st)*st||st;
 var x=function(t){return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
-var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative profit: '+SER.map(function(s){
- return s.name+' '+usd(s.pts.length?s.pts[s.pts.length-1].v:0)}).join('; ')},host);
+var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative simulated profit, replayed then live: '+
+ SER.map(function(s){return s.name+' ending '+usd(s.pts[s.pts.length-1].v)}).join('; ')},host);
 var g=el('g',{'class':'grid'},svg);
 for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);
  tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+Math.round(v).toLocaleString())}
@@ -319,14 +319,20 @@ for(var dd=new Date(t0);dd.getTime()<=t1;dd.setUTCDate(dd.getUTCDate()+tickEvery
  var X=x(dd.getTime());if(X>W-m.r-42)break;
  tx(el('text',{x:X,y:H-m.b+17,'text-anchor':'middle'},svg),dd.toISOString().slice(5,10))}
 tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),new Date(t1).toISOString().slice(5,10));
+var hand=null;
 var ends=[];
 SER.forEach(function(s){
  if(!s.pts.length)return;
  var d='';s.pts.forEach(function(p,i){d+=(i?'L':'M')+x(p.ms).toFixed(1)+' '+y(p.v).toFixed(1)});
  el('path',{d:d,fill:'none',stroke:s.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+ if(s.hand){hand=s.hand;el('circle',{cx:x(s.hand),cy:y(s.base),r:4,fill:'var(--surface)',stroke:s.color,'stroke-width':2},svg)}
  var last=s.pts[s.pts.length-1];
  el('circle',{cx:x(last.ms),cy:y(last.v),r:4.5,fill:s.color,stroke:'var(--surface)','stroke-width':2},svg);
  ends.push({p:last,c:s.color})});
+if(hand!==null){
+ el('line',{x1:x(hand),x2:x(hand),y1:m.t,y2:H-m.b,stroke:'var(--ink-3)','stroke-width':1,'stroke-dasharray':'2 3',opacity:.7},svg);
+ var flip=x(hand)>W-m.r-100;
+ tx(el('text',{x:x(hand)+(flip?-6:6),y:m.t+11,'text-anchor':flip?'end':'start',fill:'var(--ink-3)','font-size':'10.5'},svg),'live ledger takes over')}
 ends.sort(function(a,b){return y(a.p.v)-y(b.p.v)});
 var prevY=-99;ends.forEach(function(L){var Y=y(L.p.v)+4;if(Y-prevY<13)Y=prevY+13;prevY=Y;
  tx(el('text',{x:W-m.r+8,y:Y,'text-anchor':'start',fill:L.c,'font-weight':'600'},svg),usd(L.p.v))});
@@ -335,19 +341,19 @@ var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},s
 hit.addEventListener('pointermove',function(e){
  var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W,t=t0+(vx-m.l)/(W-m.l-m.r)*(t1-t0);
  xh.setAttribute('x1',x(t));xh.setAttribute('x2',x(t));xh.style.opacity=1;
- tip.innerHTML='';var h=document.createElement('div');h.className='t';
- h.textContent=new Date(t).toISOString().slice(0,10);tip.appendChild(h);
+ tip.innerHTML='';var seg=hand!==null&&t>=hand?'live ledger':'replayed from history';
+ var h=document.createElement('div');h.className='t';
+ h.textContent=new Date(t).toISOString().slice(0,10)+' · '+seg;tip.appendChild(h);
  var note=null;
  SER.forEach(function(s){
-  if(!s.pts.length)return;
   var b=null;s.pts.forEach(function(p){if(p.ms<=t+432e5&&(!b||p.ms>b.ms))b=p});
   var r=document.createElement('div');r.className='r';
   var sp=document.createElement('span');var k=document.createElement('i');
   k.style.cssText='display:inline-block;width:14px;border-top:2px solid '+s.color+';margin-right:6px;vertical-align:middle';
-  sp.appendChild(k);sp.appendChild(document.createTextNode(s.name.split(' · ')[0]+(s.kind==='replay'?' '+s.name.split(' · ')[1]:'')));
+  sp.appendChild(k);sp.appendChild(document.createTextNode(s.name.split(' · ')[0]));
   var bb=document.createElement('b');bb.textContent=b?usd(b.v):'—';
   r.appendChild(sp);r.appendChild(bb);tip.appendChild(r);
-  if(b&&b.desc&&s.kind==='live')note=b.desc});
+  if(b&&b.desc)note=b.desc});
  if(note){var n2=document.createElement('div');n2.className='t';n2.style.marginTop='5px';n2.style.whiteSpace='normal';
   n2.textContent=note;tip.appendChild(n2)}
  tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
@@ -419,21 +425,37 @@ def combine_curves(reps: list[dict]) -> list[dict]:
     return out
 
 
+def continue_from(replay: list[dict], live: list[dict]) -> tuple[list[dict], float, int | None]:
+    """One continuous run: the replayed window, then the live ledger carrying on from
+    where it stopped. Returns the points, the handoff value and the handoff time."""
+    pts, base = [], 0.0
+    hand_ms = None
+    for r in replay:
+        base = r["c"]
+        pts.append({"ms": f"{r['d']}T23:59:59Z", "v": r["c"], "lab": r["d"], "seg": "replay",
+                    "det": f"{r.get('n', 0)} signal{'' if r.get('n') == 1 else 's'} that day"})
+    if pts:
+        hand_ms = pts[-1]["ms"]
+    for t in live:
+        pts.append({"ms": t["ms"], "v": round(base + t["v"], 4), "lab": t["t"], "seg": "live",
+                    "det": f"trade #{t['id']} · {money(t['p'])}", "desc": t["d"]})
+    return pts, base, hand_ms
+
+
 def chart_payload(d: dict, reps: list[dict]) -> dict:
-    """One chart, three series, each measured from zero. The two replay scopes are
-    nested (majors is a subset of majors+niche) so they share a hue at two steps;
-    the live ledger is a different experiment and gets its own hue."""
+    """One chart. Each scope is a single continuous line: the replayed history, then
+    the live ledger continuing from it. The two scopes are nested (majors is a subset
+    of majors+niche) so they share a hue at two steps."""
     majors = next((r for r in reps if r["name"].lower().startswith("majors")), None)
     combined = combine_curves(reps) if reps else []
     days = max((r["days"] for r in reps), default=0)
     series = []
     if majors:
-        series.append({"kind": "replay", "color": "var(--s1)",
-                       "name": f"Replay · majors · {majors['days']}d", "pts": majors["curve"]})
+        pts, base, hand = continue_from(majors["curve"], d["curve_majors"])
+        series.append({"color": "var(--s1)", "name": f"Majors · {majors['days']}d", "pts": pts, "hand": hand, "base": base})
     if combined:
-        series.append({"kind": "replay", "color": "var(--s2)",
-                       "name": f"Replay · majors + niche · {days}d", "pts": combined})
-    series.append({"kind": "live", "color": "var(--s3)", "name": "Live ledger · realized", "pts": d["curve"]})
+        pts, base, hand = continue_from(combined, d["curve"])
+        series.append({"color": "var(--s2)", "name": f"Majors + niche · {days}d", "pts": pts, "hand": hand, "base": base})
     return {"activity": d["activity"], "series": series, "live": d["curve"]}
 
 
@@ -453,6 +475,10 @@ def main() -> None:
         f"<td class='n {'up' if r['realized'] > 0 else ''}'>{money(r['realized'])}</td><td class=n>{money(r['locked'])}</td>"
         f"<td class=n>{money(r['realized'] + r['locked'])}</td></tr>" for r in d["leagues"]) or "<tr><td colspan=6 class=muted>Nothing yet.</td></tr>"
     ret = (d["realized"] / d["cost_settled"] * 100) if d["cost_settled"] else 0.0
+    payload = chart_payload(d, reps)
+    grand = max((sr["pts"][-1]["v"] for sr in payload["series"] if sr["pts"]), default=d["realized"])
+    replay_total = sum(r["total"] for r in reps)
+    start_day = min((r["curve"][0]["d"] for r in reps if r["curve"]), default="")
     html = TEMPLATE
     for k, v in {
         "__GEN__": d["generated"].strftime("%Y-%m-%d %H:%M UTC"),
@@ -464,17 +490,17 @@ def main() -> None:
         "__SETTLED_ROWS__": rows_html(d["settled_rows"], True),
         "__OPEN_ROWS__": rows_html(d["open_rows"], False),
         "__LEAGUE_ROWS__": league_rows,
-        "__REPLAY_TOTAL__": money(sum(r["total"] for r in reps), 0) if reps else "$0",
+        "__REPLAY_TOTAL__": money(replay_total, 0) if reps else "$0",
         "__REPLAY_DAYS__": str(max((r["days"] for r in reps), default=0)),
-        "__DATA__": json.dumps(chart_payload(d, reps), separators=(",", ":")).replace("</", "<\\/"),
+        "__GRAND__": money(grand), "__START__": start_day,
+        "__DATA__": json.dumps(payload, separators=(",", ":")).replace("</", "<\\/"),
     }.items():
         html = html.replace(k, v)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html)
     print(f"wrote {out} ({len(html) / 1024:.0f} KB) · profit {money(d['total'])} · {d['n_settled']} settled, "
-          f"{d['n_open']} open · {len(reps)} replay series"
-          f" · replay {money(sum(r['total'] for r in reps), 0)}")
+          f"{d['n_open']} open · grand total {money(grand)} (replay {money(replay_total, 0)} + live realized {money(d['realized'])})")
 
 
 if __name__ == "__main__":
