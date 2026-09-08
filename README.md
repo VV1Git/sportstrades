@@ -111,7 +111,9 @@ redeployed on every run, and the page reloads itself every five minutes.
 laptop sleeps. Every two hours it scans both venues, paper-trades anything profitable after fees, settles
 finished games and publishes the ledger. Nothing to install and no API keys: every endpoint it uses is public.
 
-* **Dashboard**: <https://vv1git.github.io/sportstrades/>, rebuilt by `docs/build_dashboard.py` each run.
+* **Dashboard**: <https://vv1git.github.io/sportstrades/>, rebuilt by `docs/build_dashboard.py` each run. The
+  profit curve is one continuous run per scope: replayed from each venue's recorded history up to the marker, then
+  continuing with the live ledger. All figures are net of each venue's taker fees.
 * **Current P&L**: the [`ledger`](../../tree/ledger) branch — `STATUS.md` renders the summary table, `cloud.db`
   is the SQLite ledger, `status.json` the machine-readable snapshot.
 * **Run history**: the Actions tab; each run's summary page shows the same table, and attaches the database as
@@ -125,18 +127,25 @@ State lives on the `ledger` branch as a single force-pushed commit, so the repos
 of binary history. Scans there run with `--no-quotes --keep-days 14`, which keeps the database under a
 megabyte indefinitely; the per-scan quote snapshots that the research tables use stay local.
 
-**Frequency.** The repository is public, so Actions minutes are free and unlimited and the limit is GitHub's
-scheduler rather than a budget. The default is every 10 minutes; 5 is the documented cron floor, and scheduled
-jobs on shared runners are routinely delayed under load, so 10 is the useful practical setting. A run takes
-about 3.3 minutes. The cron line at the top of the workflow is the dial.
+**Frequency, measured rather than assumed.** The cron asks for every 10 minutes. GitHub actually delivers
+roughly **one scheduled run every 1 to 2 hours**. Scheduled workflows on shared runners get dropped under load,
+and asking more often does not make them arrive more often; the workflow is healthy and `active`, this is just
+what the shared scheduler hands out. Public-repo Actions minutes are free and unlimited, so budget is not the
+constraint here.
 
-Faster has sharply diminishing returns. In-game pricing gaps last about six seconds (see the analysis) and a
-scan itself takes minutes, so no reachable cron frequency catches them. What frequency actually buys is more
-independent samples of the market and quicker settlement. If you want something genuinely continuous, that
-needs a small always-on server rather than a CI scheduler.
+Since the arrival rate is not ours to set, each run that does fire performs `SCANS_PER_RUN` scans back to back
+(4 by default, a minute apart). That turns roughly 12 runs a day into roughly 50 samples a day. The job carries
+a 30-minute timeout so a hung venue API cannot sit on a runner.
 
-Two caveats that come with cron on shared runners: scheduled jobs can fire late under load, and GitHub
-disables scheduled workflows on a repository with no pushes for 60 days.
+For a genuinely fixed cadence you need something other than a CI scheduler: a small always-on box, or an
+external cron service calling the `workflow_dispatch` API. Re-dispatching from inside the workflow does not
+work, because runs triggered with `GITHUB_TOKEN` are blocked from triggering further runs.
+
+Frequency has sharply diminishing returns anyway. In-game pricing gaps last about six seconds (see the
+analysis) and a scan itself takes minutes, so no reachable cadence catches them. What more samples actually buy
+is a better estimate of how often gaps appear, and quicker settlement.
+
+One more caveat: GitHub disables scheduled workflows on a repository with no pushes for 60 days.
 
 ### Running it on your own machine instead
 

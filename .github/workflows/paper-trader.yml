@@ -8,23 +8,26 @@
 # run, so the repository never grows with binary history. The same database is
 # also uploaded as a build artifact each run, which gives you 30 days of rollback.
 #
-# The repository is public, so Actions minutes are free and unlimited: frequency
-# is limited by GitHub's scheduler rather than by budget. Five minutes is the
-# documented floor for cron, and scheduled jobs on shared runners are routinely
-# delayed under load, so ten minutes is the useful practical setting. A run takes
-# about 3.3 minutes, which keeps a runner busy roughly a third of the time.
+# Cadence, measured rather than assumed: the cron below asks for every 10 minutes,
+# but GitHub delivers roughly one scheduled run every 1-2 hours. Scheduled
+# workflows on shared runners are dropped under load, and asking more often does
+# not make them arrive more often. The workflow is "active" and healthy; this is
+# simply what the shared scheduler gives out.
 #
-# Going faster has sharply diminishing returns: in-game pricing gaps last about
-# six seconds (see docs/ANALYSIS.md) and a scan itself takes minutes, so no cron
-# frequency reachable here is going to catch them. What frequency buys is more
-# independent samples of the market and quicker settlement.
+# So rather than rely on the cron frequency, each run that *does* fire performs
+# several scans back to back. That is the part we control. Roughly 12 runs a day
+# times 4 scans is ~50 samples a day instead of ~12.
+#
+# For a genuinely fixed cadence you need something that is not a CI scheduler:
+# a small always-on box, or an external cron service hitting the workflow_dispatch
+# API. Self-re-dispatch from inside the workflow does not work, because runs
+# triggered with GITHUB_TOKEN are blocked from triggering further runs.
 
 name: paper trader
 
 on:
   schedule:
-    # every 10 minutes; GitHub may still fire late when its schedulers are busy
-    - cron: '*/10 * * * *'
+    - cron: '*/10 * * * *'   # asks for 10 min; GitHub actually delivers every 1-2 h
   workflow_dispatch:
     inputs:
       leagues:
@@ -48,7 +51,7 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 12      # a hung venue API cannot block the next scheduled run for long
+    timeout-minutes: 30      # room for the multi-scan loop; still caps a hung venue API
     environment:
       name: github-pages
       url: ${{ steps.pages.outputs.page_url }}
@@ -61,6 +64,7 @@ jobs:
       KALSHI_RATE: '4'       # gentler than local: shared runners get rate-limited harder
       CLOB_RATE: '6'
       LEAGUES: ${{ inputs.leagues || 'all' }}
+      SCANS_PER_RUN: '4'       # GitHub decides how often we run; we decide how much each run does
 
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +90,7 @@ jobs:
       - name: Scan and paper-trade
         if: ${{ inputs.settle_only != true }}
         run: |
-          arb run --leagues "$LEAGUES" --max-scans 1 --interval 1 \
+          arb run --leagues "$LEAGUES" --max-scans "$SCANS_PER_RUN" --interval 60 \
                   --settle-every 999 --no-quotes --keep-days 14 \
                   --status-file data/status.json
 
