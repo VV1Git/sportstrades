@@ -153,11 +153,11 @@ TEMPLATE = """<!doctype html>
 <style>
 :root{color-scheme:light;
  --paper:#f4f6f5;--surface:#fff;--ink:#141a18;--ink-2:#55605c;--ink-3:#7c8783;--rule:#d9dfdb;--grid:#e8ece9;
- --acc:#0b7f5a;--acc2:#3352c7;--bar:#4f66a8;--up:#0b7f5a;--down:#b3261e;--tip:#fff;--shadow:0 6px 24px rgba(20,26,24,.10);
+ --acc:#0b7f5a;--acc2:#3352c7;--bar:#4f66a8;--s1:#2151af;--s2:#5381d6;--s3:#ac3273;--up:#0b7f5a;--down:#b3261e;--tip:#fff;--shadow:0 6px 24px rgba(20,26,24,.10);
  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;
  --paper:#0f1312;--surface:#171c1a;--ink:#e9edeb;--ink-2:#a3aca8;--ink-3:#7c8783;--rule:#2a322e;--grid:#232a27;
- --acc:#22a878;--acc2:#6b7ae3;--bar:#7a8fd0;--up:#22a878;--down:#e07a72;--tip:#1d2320;--shadow:0 6px 24px rgba(0,0,0,.45)}}
+ --acc:#22a878;--acc2:#6b7ae3;--bar:#7a8fd0;--s1:#3664be;--s2:#6591e1;--s3:#c1558a;--up:#22a878;--down:#e07a72;--tip:#1d2320;--shadow:0 6px 24px rgba(0,0,0,.45)}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
 .wrap{max-width:1120px;margin:0 auto;padding:clamp(18px,3vw,36px) clamp(14px,3vw,28px) 64px}
@@ -192,8 +192,9 @@ svg .bar.zero{fill:var(--grid)}
 svg .xh{stroke:var(--ink-3);stroke-width:1;opacity:0}
 svg .hit{fill:transparent}
 table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed}
-.grid2 col.c-id{width:38px}.grid2 col.c-when{width:104px}.grid2 col.c-kind{width:52px}
-.grid2 col.c-qty{width:50px}.grid2 col.c-cost{width:72px}.grid2 col.c-val{width:76px}
+.grid2 col.c-id{width:44px}.grid2 col.c-when{width:118px}.grid2 col.c-kind{width:62px}
+.grid2 col.c-qty{width:60px}.grid2 col.c-cost{width:86px}.grid2 col.c-val{width:96px}
+@media (max-width:700px){.grid2 col.c-when{width:78px}.grid2 col.c-kind{width:48px}}
 th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--rule);white-space:nowrap}
 th{font:600 11.5px/1.3 var(--sans);color:var(--ink-2);letter-spacing:.02em}
 td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -202,7 +203,7 @@ td.desc{white-space:normal;color:var(--ink-2);font-size:12.5px;overflow-wrap:any
 th,td{overflow:hidden;text-overflow:ellipsis}
 td.up{color:var(--up)}td.down{color:var(--down)}
 tbody tr:last-child td{border-bottom:0}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 @media (max-width:760px){.grid2{grid-template-columns:1fr}}
 .tw{overflow-x:auto}
 .wrap{overflow-x:clip}
@@ -223,10 +224,12 @@ a{color:inherit}
 </header>
 
 <div class="hero">
-  <div class="lab">Simulated profit</div>
+  <div class="lab">Live paper ledger · simulated profit</div>
   <div class="big">__TOTAL__</div>
   <div class="note">__REALIZED__ realized on __NSETTLED__ settled hedges, __LOCKED__ already locked in by __NOPEN__ open ones.
-  Every hedge buys both sides of an outcome, so a settled trade pays the same whoever wins.</div>
+  Every hedge buys both sides of an outcome, so a settled trade pays the same whoever wins.
+  <br>The historical replay charted below is a <em>separate</em> experiment on past games and is never added to this
+  figure. It reached __REPLAY_TOTAL__ over its window.</div>
 </div>
 
 <div class="tiles">
@@ -235,24 +238,19 @@ a{color:inherit}
   <div class="tile"><div class="v">__DEPLOYED__</div><div class="l">Capital deployed of __BANKROLL__</div></div>
   <div class="tile"><div class="v">__RET__</div><div class="l">Return on settled capital (__COSTSETTLED__)</div></div>
   <div class="tile"><div class="v">__NSCANS__</div><div class="l">Scans run · __NOPPS__ opportunities seen</div></div>
+  <div class="tile"><div class="v">__REPLAY_TOTAL__</div><div class="l">Historical replay over __REPLAY_DAYS__ days — a separate experiment, and an upper bound</div></div>
 </div>
 
 <div class="card">
-  <h2>Cumulative profit · major leagues</h2>
-  <p class="cap">NFL, college football, MLB, NHL, WNBA, MLS and the big European soccer leagues. The first segment is
-  replayed from each venue's own recorded history; the second is the live paper ledger, continuing from where the
-  replay ends. The replay is an upper bound, since it assumes zero latency and that every recorded price was executable.</p>
-  <div class="legend" id="lg-major"></div>
-  <div id="c-major"></div><div class="tip" id="c-major-tip"></div>
-</div>
-
-<div class="card">
-  <h2>Cumulative profit · majors and niche</h2>
-  <p class="cap">The same, plus ITF and ATP/WTA tennis, Counter-Strike, Dota 2, League of Legends, Valorant, KBO, NPB,
-  KHL and second-tier soccer. Niche markets are where nearly all of the simulated profit comes from, on both the
-  replay and the live ledger.</p>
-  <div class="legend" id="lg-all"></div>
-  <div id="c-all"></div><div class="tip" id="c-all-tip"></div>
+  <h2>Cumulative profit</h2>
+  <p class="cap">Three measurements on one timeline. The two replay lines are the same experiment at two scopes:
+  major leagues, and major leagues plus the niche ones (ITF and ATP/WTA tennis, Counter-Strike, Dota 2, League of
+  Legends, Valorant, KBO, NPB, KHL, second-tier soccer). The gap between them is what niche markets add.
+  <b>Every line starts at zero and is measured on its own</b>, never summed: the replays cover past games and are an
+  upper bound, assuming zero latency and that each recorded price was executable, while the live ledger is what the
+  scanner has actually accumulated since it was switched on.</p>
+  <div class="legend" id="lg-main"></div>
+  <div id="c-main"></div><div class="tip" id="c-main-tip"></div>
   <details><summary class="muted">Table view · live settled hedges</summary><div class="tw"><table id="curve-table"></table></div></details>
 </div>
 
@@ -287,76 +285,80 @@ function tx(e,s){e.textContent=s;return e}
 function usd(v){return (v<0?'-$':'$')+Math.abs(v).toFixed(2)}
 function step(range,target){var raw=range/target,p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10)),c=raw/p;return (c<1.5?1:c<3.5?2:c<7.5?5:10)*p}
 
-/* two cumulative-profit charts: replayed history, then the live ledger continuing from it */
-function profitChart(cfg){
- var host=document.getElementById(cfg.host),tip=document.getElementById(cfg.host+'-tip'),leg=document.getElementById(cfg.legend);
- if(!host)return;
- var RE=cfg.replay||[],LI=cfg.live||[];
- var pts=[];
- RE.forEach(function(r){pts.push({ms:Date.parse(r.d+'T23:59:59Z'),v:r.c,seg:'replay',lab:r.d,
-   det:(r.n||0)+' signal'+((r.n||0)===1?'':'s')+' that day'})});
- var base=RE.length?RE[RE.length-1].c:0;
- var hand=pts.length?pts[pts.length-1].ms:null;
- LI.forEach(function(r){pts.push({ms:r.ms,v:base+r.v,seg:'live',lab:r.t,det:'trade #'+r.id+' · '+usd(r.p),desc:r.d})});
- leg.innerHTML='';
- [[cfg.replayName,'var(--acc2)',RE.length],[cfg.liveName,'var(--acc)',LI.length]].forEach(function(e){
-  var sp=document.createElement('span');var i=document.createElement('i');i.style.borderColor=e[1];
-  sp.appendChild(i);sp.appendChild(document.createTextNode(e[0]+(e[2]?'':' · none yet')));
-  if(!e[2])sp.style.opacity=.55;leg.appendChild(sp)});
- if(pts.length<2){host.innerHTML='<p class="muted">'+(cfg.empty||'Not enough data to plot yet.')+'</p>';return}
- var W=1040,H=270,m={l:66,r:74,t:14,b:30};
- var t0=pts[0].ms,t1=pts[pts.length-1].ms;if(t1<=t0)t1=t0+864e5;
- var vmax=0;pts.forEach(function(p){if(p.v>vmax)vmax=p.v});
- var st=step(Math.max(vmax,1),4),ymax=Math.ceil(vmax/st)*st||st;
- var x=function(t){return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
- var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':cfg.replayName+' then '+cfg.liveName+', ending '+usd(pts[pts.length-1].v)},host);
- var g=el('g',{'class':'grid'},svg);
- for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);
-  tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+Math.round(v).toLocaleString())}
- el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
- var span=t1-t0,dayMs=864e5,tickEvery=Math.max(1,Math.ceil(span/dayMs/7));
- for(var d=new Date(t0);d.getTime()<=t1;d.setUTCDate(d.getUTCDate()+tickEvery)){
-  var X=x(d.getTime());if(X>W-m.r-40)break;
-  tx(el('text',{x:X,y:H-m.b+17,'text-anchor':'middle'},svg),d.toISOString().slice(5,10))}
- tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),new Date(t1).toISOString().slice(5,10));
- function seg(name,color){var d='',open=false;
-  pts.forEach(function(p,i){if(p.seg!==name){open=false;return}
-   var X=x(p.ms).toFixed(1),Y=y(p.v).toFixed(1);
-   if(!open){ if(name==='live'&&hand!==null)d+='M'+x(hand).toFixed(1)+' '+y(base).toFixed(1)+'L'+X+' '+Y;
-              else d+='M'+X+' '+Y; open=true }
-   else d+='L'+X+' '+Y});
-  if(d)el('path',{d:d,fill:'none',stroke:color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg)}
- seg('replay','var(--acc2)');seg('live','var(--acc)');
- if(hand!==null&&LI.length){
-  var hx=x(hand),flip=hx>W-m.r-96;      /* near the right edge, hang the label to the left */
-  el('line',{x1:hx,x2:hx,y1:m.t,y2:H-m.b,stroke:'var(--rule)','stroke-width':1},svg);
-  el('circle',{cx:hx,cy:y(base),r:4.5,fill:'var(--acc2)',stroke:'var(--surface)','stroke-width':2},svg);
-  tx(el('text',{x:hx+(flip?-6:6),y:m.t+11,'text-anchor':flip?'end':'start',fill:'var(--ink-3)','font-size':'10.5'},svg),'live ledger starts')}
- var last=pts[pts.length-1];
- el('circle',{cx:x(last.ms),cy:y(last.v),r:4.5,fill:last.seg==='live'?'var(--acc)':'var(--acc2)',stroke:'var(--surface)','stroke-width':2},svg);
- tx(el('text',{x:Math.min(x(last.ms)+8,W-4),y:y(last.v)+4,'text-anchor':x(last.ms)+8>W-72?'end':'start',fill:'var(--ink)'},svg),usd(last.v));
- var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
- var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
- hit.addEventListener('pointermove',function(e){
-  var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W,t=t0+(vx-m.l)/(W-m.l-m.r)*(t1-t0),b=0;
-  for(var i=1;i<pts.length;i++)if(Math.abs(pts[i].ms-t)<Math.abs(pts[b].ms-t))b=i;
-  var pt=pts[b];xh.setAttribute('x1',x(pt.ms));xh.setAttribute('x2',x(pt.ms));xh.style.opacity=1;
-  tip.innerHTML='';var h=document.createElement('div');h.className='t';
-  h.textContent=pt.lab+' · '+(pt.seg==='replay'?'replay':'live ledger');tip.appendChild(h);
-  var r1=document.createElement('div');r1.className='r';var s1=document.createElement('span');s1.textContent='Cumulative';
-  var b1=document.createElement('b');b1.textContent=usd(pt.v);r1.appendChild(s1);r1.appendChild(b1);tip.appendChild(r1);
-  var r2=document.createElement('div');r2.className='t';r2.style.marginTop='5px';r2.style.whiteSpace='normal';
-  r2.textContent=pt.desc||pt.det;tip.appendChild(r2);
-  tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
-  var L=e.clientX-cr.left+14;if(L+240>cr.width)L-=268;tip.style.left=L+'px';tip.style.top=(hr.top-cr.top+8)+'px'});
- hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
-}
-(D.charts||[]).forEach(profitChart);
+/* one cumulative-profit chart: two replay scopes and the live ledger, each from zero */
+(function(){
+var host=document.getElementById('c-main'),tip=document.getElementById('c-main-tip'),leg=document.getElementById('lg-main');
+if(!host)return;
+var SER=(D.series||[]).map(function(s){
+ return {name:s.name,color:s.color,kind:s.kind,
+  pts:(s.pts||[]).map(function(r){
+   return s.kind==='replay'
+    ? {ms:Date.parse(r.d+'T23:59:59Z'),v:r.c,lab:r.d,det:(r.n||0)+' signal'+((r.n||0)===1?'':'s')+' that day'}
+    : {ms:r.ms,v:r.v,lab:r.t,det:'trade #'+r.id+' · '+usd(r.p),desc:r.d}})}});
+leg.innerHTML='';
+SER.forEach(function(s){var sp=document.createElement('span');var i=document.createElement('i');
+ i.style.borderColor=s.color;sp.appendChild(i);
+ sp.appendChild(document.createTextNode(s.name+(s.pts.length?'':' · none yet')));
+ if(!s.pts.length)sp.style.opacity=.55;leg.appendChild(sp)});
+var all=[];SER.forEach(function(s){all=all.concat(s.pts)});
+if(all.length<2){host.innerHTML='<p class="muted">Not enough data to plot yet.</p>';return}
+var W=1040,H=300,m={l:70,r:86,t:16,b:30};
+var t0=Math.min.apply(null,all.map(function(p){return p.ms})),t1=Math.max.apply(null,all.map(function(p){return p.ms}));
+if(t1<=t0)t1=t0+864e5;
+var vmax=Math.max.apply(null,all.map(function(p){return p.v}));
+var st=step(Math.max(vmax,1),4),ymax=Math.ceil(vmax/st)*st||st;
+var x=function(t){return m.l+(t-t0)/(t1-t0)*(W-m.l-m.r)},y=function(v){return m.t+(1-v/ymax)*(H-m.t-m.b)};
+var svg=el('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Cumulative profit: '+SER.map(function(s){
+ return s.name+' '+usd(s.pts.length?s.pts[s.pts.length-1].v:0)}).join('; ')},host);
+var g=el('g',{'class':'grid'},svg);
+for(var v=0;v<=ymax+1e-9;v+=st){el('line',{x1:m.l,x2:W-m.r,y1:y(v),y2:y(v)},g);
+ tx(el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},svg),'$'+Math.round(v).toLocaleString())}
+el('line',{x1:m.l,x2:W-m.r,y1:H-m.b,y2:H-m.b},el('g',{'class':'axis'},svg));
+var tickEvery=Math.max(1,Math.ceil((t1-t0)/864e5/7));
+for(var dd=new Date(t0);dd.getTime()<=t1;dd.setUTCDate(dd.getUTCDate()+tickEvery)){
+ var X=x(dd.getTime());if(X>W-m.r-42)break;
+ tx(el('text',{x:X,y:H-m.b+17,'text-anchor':'middle'},svg),dd.toISOString().slice(5,10))}
+tx(el('text',{x:W-m.r,y:H-m.b+17,'text-anchor':'end'},svg),new Date(t1).toISOString().slice(5,10));
+var ends=[];
+SER.forEach(function(s){
+ if(!s.pts.length)return;
+ var d='';s.pts.forEach(function(p,i){d+=(i?'L':'M')+x(p.ms).toFixed(1)+' '+y(p.v).toFixed(1)});
+ el('path',{d:d,fill:'none',stroke:s.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+ var last=s.pts[s.pts.length-1];
+ el('circle',{cx:x(last.ms),cy:y(last.v),r:4.5,fill:s.color,stroke:'var(--surface)','stroke-width':2},svg);
+ ends.push({p:last,c:s.color})});
+ends.sort(function(a,b){return y(a.p.v)-y(b.p.v)});
+var prevY=-99;ends.forEach(function(L){var Y=y(L.p.v)+4;if(Y-prevY<13)Y=prevY+13;prevY=Y;
+ tx(el('text',{x:W-m.r+8,y:Y,'text-anchor':'start',fill:L.c,'font-weight':'600'},svg),usd(L.p.v))});
+var xh=el('line',{'class':'xh',y1:m.t,y2:H-m.b},svg);
+var hit=el('rect',{'class':'hit',x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b},svg);
+hit.addEventListener('pointermove',function(e){
+ var rc=svg.getBoundingClientRect(),vx=(e.clientX-rc.left)/rc.width*W,t=t0+(vx-m.l)/(W-m.l-m.r)*(t1-t0);
+ xh.setAttribute('x1',x(t));xh.setAttribute('x2',x(t));xh.style.opacity=1;
+ tip.innerHTML='';var h=document.createElement('div');h.className='t';
+ h.textContent=new Date(t).toISOString().slice(0,10);tip.appendChild(h);
+ var note=null;
+ SER.forEach(function(s){
+  if(!s.pts.length)return;
+  var b=null;s.pts.forEach(function(p){if(p.ms<=t+432e5&&(!b||p.ms>b.ms))b=p});
+  var r=document.createElement('div');r.className='r';
+  var sp=document.createElement('span');var k=document.createElement('i');
+  k.style.cssText='display:inline-block;width:14px;border-top:2px solid '+s.color+';margin-right:6px;vertical-align:middle';
+  sp.appendChild(k);sp.appendChild(document.createTextNode(s.name.split(' · ')[0]+(s.kind==='replay'?' '+s.name.split(' · ')[1]:'')));
+  var bb=document.createElement('b');bb.textContent=b?usd(b.v):'—';
+  r.appendChild(sp);r.appendChild(bb);tip.appendChild(r);
+  if(b&&b.desc&&s.kind==='live')note=b.desc});
+ if(note){var n2=document.createElement('div');n2.className='t';n2.style.marginTop='5px';n2.style.whiteSpace='normal';
+  n2.textContent=note;tip.appendChild(n2)}
+ tip.style.display='block';var hr=host.getBoundingClientRect(),cr=host.parentNode.getBoundingClientRect();
+ var L=e.clientX-cr.left+14;if(L+260>cr.width)L-=288;tip.style.left=L+'px';tip.style.top=(hr.top-cr.top+8)+'px'});
+hit.addEventListener('pointerleave',function(){xh.style.opacity=0;tip.style.display='none'});
+})();
 
 /* table view of the live settled hedges */
 (function(){
 var tb=document.getElementById('curve-table');if(!tb)return;
-var S=((D.charts||[]).slice(-1)[0]||{}).live||[];
+var S=D.live||[];
 if(!S.length){tb.innerHTML='<tbody><tr><td class="muted">Nothing settled yet.</td></tr></tbody>';return}
 tb.innerHTML='<thead><tr><th>#</th><th>Settled (UTC)</th><th class=n>Trade P&amp;L</th><th class=n>Running total</th><th>Trade</th></tr></thead>';
 var body=document.createElement('tbody');
@@ -418,26 +420,21 @@ def combine_curves(reps: list[dict]) -> list[dict]:
 
 
 def chart_payload(d: dict, reps: list[dict]) -> dict:
-    """Two cumulative-profit charts on one time axis: replay first, live continuing
-    from it. Kept as two labelled segments of one line rather than two independent
-    lines, because they are the same question asked of two different data sources."""
+    """One chart, three series, each measured from zero. The two replay scopes are
+    nested (majors is a subset of majors+niche) so they share a hue at two steps;
+    the live ledger is a different experiment and gets its own hue."""
     majors = next((r for r in reps if r["name"].lower().startswith("majors")), None)
     combined = combine_curves(reps) if reps else []
-    return {
-        "activity": d["activity"],
-        "charts": [
-            {"host": "c-major", "legend": "lg-major",
-             "replay": majors["curve"] if majors else [],
-             "replayName": f"Historical replay · {majors['days']}d · {majors['games']} games" if majors else "Historical replay",
-             "live": d["curve_majors"], "liveName": "Live paper ledger",
-             "empty": "No major-league hedge has settled live yet."},
-            {"host": "c-all", "legend": "lg-all",
-             "replay": combined,
-             "replayName": f"Historical replay · {max((r['days'] for r in reps), default=0)}d" if reps else "Historical replay",
-             "live": d["curve"], "liveName": "Live paper ledger",
-             "empty": "No hedge has settled live yet."},
-        ],
-    }
+    days = max((r["days"] for r in reps), default=0)
+    series = []
+    if majors:
+        series.append({"kind": "replay", "color": "var(--s1)",
+                       "name": f"Replay · majors · {majors['days']}d", "pts": majors["curve"]})
+    if combined:
+        series.append({"kind": "replay", "color": "var(--s2)",
+                       "name": f"Replay · majors + niche · {days}d", "pts": combined})
+    series.append({"kind": "live", "color": "var(--s3)", "name": "Live ledger · realized", "pts": d["curve"]})
+    return {"activity": d["activity"], "series": series, "live": d["curve"]}
 
 
 def main() -> None:
@@ -467,6 +464,8 @@ def main() -> None:
         "__SETTLED_ROWS__": rows_html(d["settled_rows"], True),
         "__OPEN_ROWS__": rows_html(d["open_rows"], False),
         "__LEAGUE_ROWS__": league_rows,
+        "__REPLAY_TOTAL__": money(sum(r["total"] for r in reps), 0) if reps else "$0",
+        "__REPLAY_DAYS__": str(max((r["days"] for r in reps), default=0)),
         "__DATA__": json.dumps(chart_payload(d, reps), separators=(",", ":")).replace("</", "<\\/"),
     }.items():
         html = html.replace(k, v)
