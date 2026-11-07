@@ -1,0 +1,24 @@
+{
+ "updated": "2026-11-07T14:33:14+00:00",
+ "scans_this_process": 4,
+ "bankroll": 10000.0,
+ "cash_available": 10221.701061286722,
+ "deployed": 8.87466,
+ "realized_pnl": 230.57572128672152,
+ "locked_in_profit_open": 0.12534000000000034,
+ "simulated_total_profit": 230.7010612867215,
+ "trades_open": 3,
+ "trades_settled": 91,
+ "settled_wins": 91,
+ "opportunities_logged": 579,
+ "last_scan": {
+  "id": 1418,
+  "games": 390,
+  "kalshi_outcomes": 978,
+  "poly_outcomes": 117935,
+  "opportunities": 0,
+  "taken": [],
+  "seconds": 158.2
+ },
+ "last_settlement": null
+}
